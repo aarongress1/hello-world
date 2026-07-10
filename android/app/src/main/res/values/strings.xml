@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">CurioKids</string>
+
+    <!-- The URL the app loads. Change this to your server:
+         - Android emulator reaching your PC:   http://10.0.2.2:3000
+         - Physical tablet on the same WiFi:    http://YOUR-PC-IP:3000  (e.g. 192.168.1.42)
+         - Best (works anywhere): your free Cloudflare tunnel https URL -->
+    <string name="app_url">http://10.0.2.2:3000</string>
+</resources>

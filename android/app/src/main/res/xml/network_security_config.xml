@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Allows plain http to your local PC during the pilot. For a Play Store
+     release, serve over https (e.g. a Cloudflare tunnel) and remove this. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

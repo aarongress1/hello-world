@@ -1,6 +1,24 @@
 'use strict';
 
+const fs = require('fs');
 const path = require('path');
+
+// Minimal .env loader (no dependency). Reads KEY=VALUE lines from a .env file in
+// the project root so local pilots can configure without setting shell vars.
+// Real environment variables always win over .env.
+(function loadDotEnv() {
+  try {
+    const envPath = path.join(__dirname, '..', '.env');
+    if (!fs.existsSync(envPath)) return;
+    for (const line of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+      if (!m || line.trim().startsWith('#')) continue;
+      let v = m[2].trim();
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+      if (process.env[m[1]] === undefined) process.env[m[1]] = v;
+    }
+  } catch { /* ignore malformed .env */ }
+})();
 
 const config = {
   port: parseInt(process.env.PORT, 10) || 3000,

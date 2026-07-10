@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.CurioKids" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:statusBarColor">#6D4BFF</item>
+        <item name="android:windowBackground">#EFEAFF</item>
+    </style>
+</resources>
