@@ -1,0 +1,26 @@
+# One-click deploy blueprint for Render (https://render.com).
+# In Render: New > Blueprint > connect this repo/branch. It reads this file.
+services:
+  - type: web
+    name: curiokids
+    runtime: docker
+    plan: starter                # smallest paid plan supports a persistent disk
+    healthCheckPath: /api/health
+    envVars:
+      - key: APP_SECRET          # signs sessions + encrypts stored keys
+        generateValue: true      # Render generates a strong random secret
+      - key: DATABASE_PATH
+        value: /data/curio.db
+      - key: DEMO_MODE
+        value: "true"            # safe default; real AI turns on when a key is set
+      # --- Bundled ("we run the model") mode — set these to use real AI ---
+      # - key: CURIO_AI_PROVIDER
+      #   value: anthropic
+      # - key: CURIO_AI_KEY
+      #   sync: false            # paste your Anthropic API key in the dashboard
+      # - key: CURIO_AI_MODEL
+      #   value: claude-sonnet-5
+    disk:
+      name: curio-data
+      mountPath: /data
+      sizeGB: 1

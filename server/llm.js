@@ -5,7 +5,7 @@
 // provider directly. This module speaks both APIs and falls back to a canned
 // "demo" guide when no key is connected (config.demoMode).
 
-const { demoMode } = require('./config');
+const { demoMode, bundled } = require('./config');
 
 const KNOWN_MODELS = {
   anthropic: [
@@ -83,6 +83,15 @@ async function moderate({ provider, apiKey, input }) {
   }
 }
 
+// The server-side "bundled" provider secret (used when a parent hasn't connected
+// their own key). Returns null if no CURIO_AI_KEY is configured.
+function defaultSecret() {
+  if (!bundled.apiKey || !bundled.provider) return null;
+  const model = bundled.model || (KNOWN_MODELS[bundled.provider]?.[0]?.id);
+  if (!model) return null;
+  return { provider: bundled.provider, apiKey: bundled.apiKey, model };
+}
+
 // ---- Demo guide (no key connected) -----------------------------------------
 
 function demoReply(kid, userText, focus) {
@@ -156,4 +165,4 @@ const CURRICULUM_PRESETS = {
   },
 };
 
-module.exports = { complete, moderate, demoReply, KNOWN_MODELS, CURRICULUM_PRESETS, demoMode };
+module.exports = { complete, moderate, demoReply, defaultSecret, KNOWN_MODELS, CURRICULUM_PRESETS, demoMode };

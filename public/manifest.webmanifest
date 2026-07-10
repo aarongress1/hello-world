@@ -1,0 +1,14 @@
+{
+  "name": "CurioKids",
+  "short_name": "Curio",
+  "description": "A K–8 learning companion built for thoughtful engagement, not screen time.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#efeaff",
+  "theme_color": "#6d4bff",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

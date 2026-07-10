@@ -31,7 +31,7 @@ module.exports = function registerChat(app) {
       nextObjective: store.nextObjective(kidId),
       activeFocus: activeFocusFor(req.session),
       messages: store.listMessages(kidId, null, 60),
-      providerConnected: !!store.getProviderMeta(req.parent.id) || demoMode,
+      providerConnected: !!store.getProviderMeta(req.parent.id) || !!llm.defaultSecret() || demoMode,
     });
   }));
 
@@ -125,7 +125,8 @@ module.exports = function registerChat(app) {
     }
 
     // ---- 2. Provider-side moderation (extra opinion, OpenAI only) ----
-    const secret = store.getProviderSecret(req.parent.id);
+    // Prefer the parent's own key (BYO/Pro mode); otherwise use the bundled key.
+    const secret = store.getProviderSecret(req.parent.id) || llm.defaultSecret();
     if (secret) {
       const mod = await llm.moderate({ provider: secret.provider, apiKey: secret.apiKey, input: text });
       if (mod?.flagged) {
@@ -201,7 +202,7 @@ module.exports = function registerChat(app) {
     }
 
     let summary;
-    const secret = store.getProviderSecret(req.parent.id);
+    const secret = store.getProviderSecret(req.parent.id) || llm.defaultSecret();
     const transcript = msgs.map((m) => `${m.role === 'kid' ? kid.name : 'Curio'}: ${m.content}`).join('\n').slice(0, 6000);
 
     if (secret) {
