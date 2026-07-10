@@ -85,9 +85,14 @@ async function moderate({ provider, apiKey, input }) {
 
 // ---- Demo guide (no key connected) -----------------------------------------
 
-function demoReply(kid, userText) {
+function demoReply(kid, userText, focus) {
   const name = kid?.name || 'friend';
   const t = String(userText).toLowerCase();
+  // Respect the thoughtful-engagement wind-down: if the focus session's time is
+  // up, celebrate and send them off-screen rather than pulling them deeper.
+  if (focus && focus.elapsedMinutes >= focus.target_minutes) {
+    return `You did such good thinking today, ${name}! 🌿 That's a great place to stop. Here's your mission OFF the screen: go try one small piece of "${focus.goal}" in the real world — build it, draw it, or show someone. I'll be here next time. 👋`;
+  }
   if (/game/.test(t)) {
     return `Ooh, a game! Love it, ${name}. 🎮 Let's think from the very start: every game needs a *goal* and a *rule*. What's one thing the player is trying to do — collect coins, reach the end, dodge something? Pick one and we'll build the tiniest version first.`;
   }
@@ -115,4 +120,40 @@ async function safeText(res) {
   try { return (await res.text()).slice(0, 500); } catch { return ''; }
 }
 
-module.exports = { complete, moderate, demoReply, KNOWN_MODELS, demoMode };
+// Starter curriculum presets for homeschool / self-guided plans. These are
+// lightweight scaffolds a parent can import and then edit — not a full
+// curriculum, and not tied to any specific state standard.
+const CURRICULUM_PRESETS = {
+  'early-explorer': {
+    title: 'Early Explorer (K–2 sampler)',
+    objectives: [
+      ['Reading', 'Sound out and read 5 new words'],
+      ['Math', 'Count and add up to 20 with objects'],
+      ['Science', 'Observe something in nature and describe it'],
+      ['Creativity', 'Make up and tell a short story'],
+      ['Life Skills', 'Learn what "first principles" means with a simple example'],
+    ],
+  },
+  'maker-track': {
+    title: 'Young Maker Track (grades 3–5)',
+    objectives: [
+      ['Coding & Games', 'Design the rules for a simple game'],
+      ['Coding & Games', 'Build a paper prototype of your game'],
+      ['Business & Money', 'Find a real problem worth solving'],
+      ['Writing & Stories', 'Write and revise a one-page story'],
+      ['Science', 'Run a small experiment and record what happened'],
+    ],
+  },
+  'passion-project': {
+    title: 'Passion Project (grades 6–8)',
+    objectives: [
+      ['Discovery', 'List 3 things you are genuinely curious about'],
+      ['Research', 'Learn the fundamentals of your top interest from first principles'],
+      ['Build', 'Plan a real project you could make in 2 weeks'],
+      ['Build', 'Create the first working version'],
+      ['Reflect', 'Explain what you made and what you learned to someone'],
+    ],
+  },
+};
+
+module.exports = { complete, moderate, demoReply, KNOWN_MODELS, CURRICULUM_PRESETS, demoMode };

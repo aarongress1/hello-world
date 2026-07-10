@@ -2,10 +2,24 @@
 
 const store = require('../store');
 const { requireParent } = require('../session');
-const { KNOWN_MODELS } = require('../llm');
+const { KNOWN_MODELS, CURRICULUM_PRESETS } = require('../llm');
+const safety = require('../safety');
 
 const PLAN_KID_LIMIT = { explorer: 1, plus: 3, max: 6 };
 const GATE_MODES = ['every', 'daily', 'weekly', 'off'];
+
+function kidFields(body) {
+  return {
+    name: body.name,
+    grade: body.grade,
+    interests: body.interests || '',
+    gate_mode: GATE_MODES.includes(body.gate_mode) ? body.gate_mode : 'every',
+    blocked_topics: String(body.blocked_topics || '').slice(0, 1000),
+    priority_topics: String(body.priority_topics || '').slice(0, 1000),
+    homeschool: body.homeschool ? 1 : 0,
+    session_minutes: Math.min(90, Math.max(5, Number(body.session_minutes) || 30)),
+  };
+}
 
 module.exports = function registerParent(app) {
   // ---- Provider connection ----
@@ -39,19 +53,18 @@ module.exports = function registerParent(app) {
     if (kids.length >= limit) {
       return res.json({ error: `Your ${req.parent.plan} plan allows ${limit} child profile(s). Upgrade to add more.` }, 402);
     }
-    const { name, grade, interests, gate_mode } = req.body || {};
-    if (!name || !grade) return res.json({ error: 'A name and grade are required.' }, 400);
-    const mode = GATE_MODES.includes(gate_mode) ? gate_mode : 'every';
-    const kid = store.createKid(req.parent.id, { name: String(name).slice(0, 40), grade, interests, gate_mode: mode });
+    const body = req.body || {};
+    if (!body.name || !body.grade) return res.json({ error: 'A name and grade are required.' }, 400);
+    const fields = kidFields(body);
+    fields.name = String(fields.name).slice(0, 40);
+    const kid = store.createKid(req.parent.id, fields);
     res.json({ ok: true, kid });
   }));
 
   app.put('/api/kids/:id', requireParent(async (req, res) => {
     const kidId = Number(req.params.id);
     if (!store.kidBelongsToParent(kidId, req.parent.id)) return res.json({ error: 'Not found.' }, 404);
-    const { name, grade, interests, gate_mode } = req.body || {};
-    const mode = GATE_MODES.includes(gate_mode) ? gate_mode : 'every';
-    res.json({ ok: true, kid: store.updateKid(kidId, { name, grade, interests: interests || '', gate_mode: mode }) });
+    res.json({ ok: true, kid: store.updateKid(kidId, kidFields(req.body || {})) });
   }));
 
   app.del('/api/kids/:id', requireParent(async (req, res) => {
@@ -70,6 +83,8 @@ module.exports = function registerParent(app) {
       quests: store.listQuests(kidId),
       messages: store.listMessages(kidId, null, 200),
       digests: store.listDigests(kidId),
+      objectives: store.listObjectives(kidId),
+      focusSessions: store.recentFocusSessions(kidId),
     });
   }));
 
@@ -89,4 +104,115 @@ module.exports = function registerParent(app) {
     const decision = req.body?.decision === 'approve' ? 'approved' : 'declined';
     res.json({ ok: true, quest: store.setQuestStatus(questId, decision) });
   }));
+
+  // ---- Learning plans & objectives (homeschool / self-guided tutor) ----
+  app.get('/api/curriculum-presets', requireParent(async (req, res) => {
+    res.json({
+      presets: Object.entries(CURRICULUM_PRESETS).map(([id, p]) => ({ id, title: p.title, count: p.objectives.length })),
+    });
+  }));
+
+  app.get('/api/kids/:id/objectives', requireParent(async (req, res) => {
+    const kidId = Number(req.params.id);
+    if (!store.kidBelongsToParent(kidId, req.parent.id)) return res.json({ error: 'Not found.' }, 404);
+    res.json({ objectives: store.listObjectives(kidId), plans: store.listPlans(kidId) });
+  }));
+
+  // Import objectives: from a preset, or from pasted text (one per line,
+  // optional "Subject: title"), or a single added objective.
+  app.post('/api/kids/:id/objectives/import', requireParent(async (req, res) => {
+    const kidId = Number(req.params.id);
+    if (!store.kidBelongsToParent(kidId, req.parent.id)) return res.json({ error: 'Not found.' }, 404);
+    const presetId = req.body?.preset;
+    const text = String(req.body?.text || '');
+    let rows = [];
+    let source = 'custom';
+    let planTitle = req.body?.title || 'Learning plan';
+
+    if (presetId && CURRICULUM_PRESETS[presetId]) {
+      const p = CURRICULUM_PRESETS[presetId];
+      rows = p.objectives.map(([subject, title]) => ({ subject, title }));
+      source = `preset:${presetId}`;
+      planTitle = p.title;
+    } else if (text.trim()) {
+      rows = text.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
+        const m = line.match(/^([^:]{2,30}):\s*(.+)$/);
+        return m ? { subject: m[1].trim(), title: m[2].trim() } : { subject: safety.guessSubject(line), title: line };
+      });
+      source = 'import';
+    }
+    if (!rows.length) return res.json({ error: 'Nothing to import — paste some objectives or choose a preset.' }, 400);
+
+    const plan = store.createPlan(kidId, { title: String(planTitle).slice(0, 120), source });
+    rows.forEach((r, i) => store.addObjective(kidId, { plan_id: plan.id, subject: r.subject, title: String(r.title).slice(0, 200), sort: i }));
+    res.json({ ok: true, plan, objectives: store.listObjectives(kidId) });
+  }));
+
+  app.post('/api/kids/:id/objectives', requireParent(async (req, res) => {
+    const kidId = Number(req.params.id);
+    if (!store.kidBelongsToParent(kidId, req.parent.id)) return res.json({ error: 'Not found.' }, 404);
+    const title = String(req.body?.title || '').slice(0, 200).trim();
+    if (!title) return res.json({ error: 'Objective needs a title.' }, 400);
+    const obj = store.addObjective(kidId, { subject: req.body?.subject || safety.guessSubject(title), title });
+    res.json({ ok: true, objective: obj });
+  }));
+
+  app.post('/api/objectives/:id/status', requireParent(async (req, res) => {
+    const obj = store.getObjective(Number(req.params.id));
+    if (!obj || !store.kidBelongsToParent(obj.kid_id, req.parent.id)) return res.json({ error: 'Not found.' }, 404);
+    const status = ['todo', 'in_progress', 'done'].includes(req.body?.status) ? req.body.status : 'done';
+    res.json({ ok: true, objective: store.setObjectiveStatus(obj.id, status) });
+  }));
+
+  app.del('/api/objectives/:id', requireParent(async (req, res) => {
+    const obj = store.getObjective(Number(req.params.id));
+    if (!obj || !store.kidBelongsToParent(obj.kid_id, req.parent.id)) return res.json({ error: 'Not found.' }, 404);
+    store.deleteObjective(obj.id);
+    res.json({ ok: true });
+  }));
+
+  // A printable homeschool record — objectives completed, focus sessions,
+  // and debriefs. Useful for portfolios / state record-keeping.
+  app.get('/api/kids/:id/record.html', requireParent(async (req, res) => {
+    const kidId = Number(req.params.id);
+    if (!store.kidBelongsToParent(kidId, req.parent.id)) {
+      res.writeHead(404, { 'content-type': 'text/plain' }); return res.end('Not found');
+    }
+    const kid = store.getKid(kidId);
+    const objectives = store.listObjectives(kidId);
+    const focus = store.recentFocusSessions(kidId, 100);
+    const digests = store.listDigests(kidId, 100);
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(renderRecord(kid, objectives, focus, digests));
+  }));
 };
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+function renderRecord(kid, objectives, focus, digests) {
+  const done = objectives.filter((o) => o.status === 'done');
+  const totalMin = focus.reduce((s, f) => s + (f.ended_at_ms && f.started_at_ms ? Math.round((f.ended_at_ms - f.started_at_ms) / 60000) : 0), 0);
+  const objRows = objectives.map((o) => `<tr><td>${esc(o.subject)}</td><td>${esc(o.title)}</td><td>${o.status === 'done' ? '✅ Done' : o.status === 'in_progress' ? '⏳ In progress' : '⬜ To do'}</td><td>${o.done_at ? esc(o.done_at) : ''}</td></tr>`).join('');
+  const focusRows = focus.map((f) => `<tr><td>${esc(f.created_at)}</td><td>${esc(f.goal)}</td><td>${f.ended_at_ms ? Math.round((f.ended_at_ms - f.started_at_ms) / 60000) : '—'} min</td><td>${f.exchanges}</td></tr>`).join('');
+  const digestRows = digests.map((d) => `<div class="d"><div class="dt">${esc(d.created_at)} UTC</div><p>${esc(d.summary)}</p></div>`).join('') || '<p>No debriefs recorded.</p>';
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Learning Record — ${esc(kid.name)}</title>
+<style>body{font-family:system-ui,sans-serif;max-width:820px;margin:2rem auto;padding:0 1rem;color:#1f2330;line-height:1.5}
+h1{margin-bottom:0}.sub{color:#55607a}table{width:100%;border-collapse:collapse;margin:1rem 0}
+th,td{text-align:left;padding:.5rem;border-bottom:1px solid #e9e6f5;font-size:.95rem}th{color:#4f2fd6}
+.cards{display:flex;gap:1rem;margin:1rem 0}.c{flex:1;background:#efeaff;border-radius:12px;padding:1rem;text-align:center}
+.c b{font-size:1.8rem;display:block;color:#4f2fd6}.d{border-left:3px solid #6d4bff;padding:.3rem 0 .3rem 1rem;margin:.6rem 0}
+.dt{font-size:.8rem;color:#55607a}@media print{.noprint{display:none}}</style></head><body>
+<button class="noprint" onclick="window.print()" style="float:right;padding:.5rem 1rem;border-radius:8px;border:0;background:#6d4bff;color:#fff;font-weight:700;cursor:pointer">🖨️ Print / Save PDF</button>
+<h1>🦉 Learning Record</h1>
+<p class="sub"><strong>${esc(kid.name)}</strong> · Grade ${esc(kid.grade)} · Generated ${esc(new Date().toISOString().slice(0, 10))}</p>
+<div class="cards"><div class="c"><b>${done.length}/${objectives.length}</b>objectives completed</div><div class="c"><b>${focus.length}</b>focus sessions</div><div class="c"><b>${totalMin}</b>minutes of focused learning</div></div>
+<h2>Learning objectives</h2>
+${objectives.length ? `<table><tr><th>Subject</th><th>Objective</th><th>Status</th><th>Completed</th></tr>${objRows}</table>` : '<p>No objectives added yet.</p>'}
+<h2>Focus sessions</h2>
+${focus.length ? `<table><tr><th>Date</th><th>Goal</th><th>Length</th><th>Exchanges</th></tr>${focusRows}</table>` : '<p>No focus sessions recorded.</p>'}
+<h2>Debriefs</h2>${digestRows}
+<p class="sub" style="margin-top:2rem;font-size:.85rem">Generated by CurioKids. Parent-supervised learning; not an accredited transcript.</p>
+</body></html>`;
+}

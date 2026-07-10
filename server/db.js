@@ -86,6 +86,53 @@ CREATE TABLE IF NOT EXISTS sessions (
   kid_id     INTEGER REFERENCES kids(id) ON DELETE SET NULL,
   expires_at INTEGER NOT NULL
 );
+
+-- A homeschool / self-guided learning plan is a set of objectives per child.
+CREATE TABLE IF NOT EXISTS plans (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  kid_id     INTEGER NOT NULL REFERENCES kids(id) ON DELETE CASCADE,
+  title      TEXT NOT NULL,
+  source     TEXT NOT NULL DEFAULT 'custom', -- 'custom' | 'preset:<name>' | 'import'
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS objectives (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  kid_id     INTEGER NOT NULL REFERENCES kids(id) ON DELETE CASCADE,
+  plan_id    INTEGER REFERENCES plans(id) ON DELETE CASCADE,
+  subject    TEXT NOT NULL DEFAULT 'General',
+  title      TEXT NOT NULL,
+  status     TEXT NOT NULL DEFAULT 'todo', -- 'todo' | 'in_progress' | 'done'
+  sort       INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  done_at    TEXT
+);
+
+-- A time-boxed, intentional learning session. The product optimizes for
+-- FINISHING these, not for maximizing minutes on screen.
+CREATE TABLE IF NOT EXISTS focus_sessions (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  kid_id         INTEGER NOT NULL REFERENCES kids(id) ON DELETE CASCADE,
+  objective_id   INTEGER REFERENCES objectives(id) ON DELETE SET NULL,
+  goal           TEXT NOT NULL,
+  target_minutes INTEGER NOT NULL DEFAULT 30,
+  started_at_ms  INTEGER NOT NULL,
+  ended_at_ms    INTEGER,
+  ended_reason   TEXT,
+  exchanges      INTEGER NOT NULL DEFAULT 0,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `);
+
+// ---- Lightweight migrations (add columns to existing tables) --------------
+function ensureColumn(table, column, ddl) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+  if (!cols.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+}
+ensureColumn('kids', 'blocked_topics', "blocked_topics TEXT NOT NULL DEFAULT ''");
+ensureColumn('kids', 'priority_topics', "priority_topics TEXT NOT NULL DEFAULT ''");
+ensureColumn('kids', 'homeschool', 'homeschool INTEGER NOT NULL DEFAULT 0');
+ensureColumn('kids', 'session_minutes', 'session_minutes INTEGER NOT NULL DEFAULT 30');
+ensureColumn('sessions', 'focus_session_id', 'focus_session_id INTEGER');
 
 module.exports = db;

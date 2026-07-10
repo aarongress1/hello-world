@@ -25,11 +25,42 @@ module.exports = function registerChat(app) {
     if (!kidId) return res.json({ error: 'No child selected.' }, 400);
     const kid = store.getKid(kidId);
     res.json({
-      kid,
+      kid: publicKid(kid),
       quests: store.listQuests(kidId),
+      objectives: store.listObjectives(kidId),
+      nextObjective: store.nextObjective(kidId),
+      activeFocus: activeFocusFor(req.session),
       messages: store.listMessages(kidId, null, 60),
       providerConnected: !!store.getProviderMeta(req.parent.id) || demoMode,
     });
+  }));
+
+  // ---- Focus sessions: intentional, time-boxed learning ----
+  app.post('/api/focus/start', requireParent(async (req, res) => {
+    const kidId = req.session.kid_id;
+    if (!kidId) return res.json({ error: 'No child selected.' }, 400);
+    const kid = store.getKid(kidId);
+    let objectiveId = req.body?.objectiveId ? Number(req.body.objectiveId) : null;
+    let goal = String(req.body?.goal || '').slice(0, 200).trim();
+    if (objectiveId) {
+      const obj = store.getObjective(objectiveId);
+      if (!obj || obj.kid_id !== kidId) objectiveId = null;
+      else if (!goal) goal = obj.title;
+    }
+    if (!goal) goal = 'Explore and learn something new';
+    const target = Math.min(90, Math.max(5, Number(req.body?.targetMinutes) || kid.session_minutes || 30));
+    const focus = store.startFocus(kidId, { objective_id: objectiveId, goal, target_minutes: target });
+    store.setSessionFocus(req.sid, focus.id);
+    res.json({ ok: true, focus: withElapsed(focus) });
+  }));
+
+  app.post('/api/focus/end', requireParent(async (req, res) => {
+    const focus = activeFocusFor(req.session);
+    if (focus) {
+      store.endFocus(focus.id, String(req.body?.reason || 'done').slice(0, 40));
+      store.setSessionFocus(req.sid, null);
+    }
+    res.json({ ok: true });
   }));
 
   // A kid proposes a new project/quest. In 'every' mode it needs a parent's
@@ -41,8 +72,10 @@ module.exports = function registerChat(app) {
     const title = String(req.body?.title || '').slice(0, 120).trim();
     if (!title) return res.json({ error: 'What would you like to explore?' }, 400);
     const scan = safety.screen(title);
-    if (!scan.safe) {
-      store.addSafetyEvent(kidId, { severity: 'block', category: scan.category, snippet: title });
+    const custom = safety.screenCustom(title, kid.blocked_topics);
+    if (!scan.safe || !custom.safe) {
+      const cat = !scan.safe ? scan.category : custom.category;
+      store.addSafetyEvent(kidId, { severity: 'block', category: cat, snippet: title });
       return res.json({ error: safety.safeRedirect(kid.name, safety.gradeBand(kid.grade).band) }, 200);
     }
     const status = kid.gate_mode === 'every' ? 'pending' : 'approved';
@@ -69,17 +102,20 @@ module.exports = function registerChat(app) {
       });
     }
 
-    // ---- 1. Screen the child's input ----
+    // ---- 1. Screen the child's input (built-in + parent's custom off-limits) ----
     const inScan = safety.screen(text);
+    const custom = safety.screenCustom(text, kid.blocked_topics);
     let careNote = '';
     let flaggedIn = false;
 
-    if (!inScan.safe && HARD_BLOCK.has(inScan.category)) {
-      store.addSafetyEvent(kidId, { severity: 'block', category: inScan.category, snippet: text });
-      store.addMessage(kidId, { quest_id: questId, role: 'kid', content: text, topic: inScan.category, flagged: 1 });
+    const hardBlocked = (!inScan.safe && HARD_BLOCK.has(inScan.category)) || !custom.safe;
+    if (hardBlocked) {
+      const cat = !custom.safe ? custom.category : inScan.category;
+      store.addSafetyEvent(kidId, { severity: 'block', category: cat, snippet: text });
+      store.addMessage(kidId, { quest_id: questId, role: 'kid', content: text, topic: cat, flagged: 1 });
       const reply = safety.safeRedirect(kid.name, band);
       store.addMessage(kidId, { quest_id: questId, role: 'guide', content: reply, topic: 'safety-redirect', flagged: 1 });
-      return res.json({ reply, flagged: true, category: inScan.category });
+      return res.json({ reply, flagged: true, category: cat });
     }
     if (inScan.category) {
       flaggedIn = true;
@@ -101,6 +137,12 @@ module.exports = function registerChat(app) {
     // Persist the kid's message now (so a provider error doesn't lose it).
     store.addMessage(kidId, { quest_id: questId, role: 'kid', content: text, topic: safety.guessSubject(text), flagged: flaggedIn ? 1 : 0 });
 
+    // Focus-session awareness: how far into today's intentional session are we?
+    const focusRow = activeFocusFor(req.session);
+    const focus = focusRow ? withElapsed(focusRow) : null;
+    if (focusRow) store.bumpFocusExchanges(focusRow.id);
+    const windDown = !!(focus && focus.elapsedMinutes >= focus.target_minutes);
+
     // ---- 3. Generate the guide's reply ----
     let reply;
     try {
@@ -108,9 +150,11 @@ module.exports = function registerChat(app) {
         if (!demoMode) {
           return res.json({ error: 'Ask your grown-up to connect a learning account in the parent dashboard first.' }, 402);
         }
-        reply = llm.demoReply(kid, text);
+        reply = llm.demoReply(kid, text, focus);
       } else {
-        const system = safety.buildSystemPrompt(kid, quest, careNote);
+        const objTitle = focusRow && focusRow.objective_id ? (store.getObjective(focusRow.objective_id)?.title) : null;
+        const focusForPrompt = focus ? { goal: focus.goal, targetMinutes: focus.target_minutes, elapsedMinutes: focus.elapsedMinutes, objectiveTitle: objTitle } : null;
+        const system = safety.buildSystemPrompt(kid, { quest, extraNote: careNote, focus: focusForPrompt });
         const history = store.listMessages(kidId, questId, 20)
           .map((m) => ({ role: m.role === 'kid' ? 'user' : 'assistant', content: m.content }));
         // Ensure the just-sent message is the last user turn.
@@ -135,7 +179,13 @@ module.exports = function registerChat(app) {
     }
 
     store.addMessage(kidId, { quest_id: questId, role: 'guide', content: reply, topic: quest ? quest.subject : safety.guessSubject(text), flagged: flaggedOut ? 1 : 0 });
-    res.json({ reply, flagged: flaggedIn || flaggedOut, category: inScan.category || null });
+    res.json({
+      reply,
+      flagged: flaggedIn || flaggedOut,
+      category: inScan.category || null,
+      windDown,
+      focus: focus ? { elapsedMinutes: focus.elapsedMinutes, targetMinutes: focus.target_minutes } : null,
+    });
   }));
 
   // Generate a parent debrief for a child, covering activity since the last one.
@@ -173,6 +223,27 @@ module.exports = function registerChat(app) {
     res.json({ ok: true, digest });
   }));
 };
+
+// The kid UI only needs a safe subset of the child's profile (not the parent's
+// private blocked/priority lists).
+function publicKid(kid) {
+  return {
+    id: kid.id, name: kid.name, grade: kid.grade, interests: kid.interests,
+    gate_mode: kid.gate_mode, homeschool: kid.homeschool, session_minutes: kid.session_minutes,
+  };
+}
+
+// Resolve the active (not-yet-ended) focus session for a server session.
+function activeFocusFor(session) {
+  if (!session.focus_session_id) return null;
+  const f = store.getFocus(session.focus_session_id);
+  return f && !f.ended_at_ms ? f : null;
+}
+
+// Attach elapsed minutes computed from the wall clock.
+function withElapsed(focus) {
+  return { ...focus, elapsedMinutes: Math.floor((Date.now() - focus.started_at_ms) / 60000) };
+}
 
 // Fallback debrief built from topic tags when no model is available.
 function localDigest(kid, msgs) {

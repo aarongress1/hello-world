@@ -68,17 +68,27 @@ function clearProvider(parentId) {
 
 // ---- Kids ------------------------------------------------------------------
 
-function createKid(parentId, { name, grade, interests, gate_mode }) {
+function createKid(parentId, k) {
   const info = db.prepare(
-    'INSERT INTO kids (parent_id, name, grade, interests, gate_mode) VALUES (?, ?, ?, ?, ?)'
-  ).run(parentId, name, grade, interests || '', gate_mode || 'every');
+    `INSERT INTO kids (parent_id, name, grade, interests, gate_mode, blocked_topics, priority_topics, homeschool, session_minutes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    parentId, k.name, k.grade, k.interests || '', k.gate_mode || 'every',
+    k.blocked_topics || '', k.priority_topics || '', k.homeschool ? 1 : 0,
+    k.session_minutes || 30
+  );
   return getKid(info.lastInsertRowid);
 }
 
-function updateKid(kidId, { name, grade, interests, gate_mode }) {
+function updateKid(kidId, k) {
   db.prepare(
-    'UPDATE kids SET name=?, grade=?, interests=?, gate_mode=? WHERE id=?'
-  ).run(name, grade, interests, gate_mode, kidId);
+    `UPDATE kids SET name=?, grade=?, interests=?, gate_mode=?,
+       blocked_topics=?, priority_topics=?, homeschool=?, session_minutes=? WHERE id=?`
+  ).run(
+    k.name, k.grade, k.interests || '', k.gate_mode || 'every',
+    k.blocked_topics || '', k.priority_topics || '', k.homeschool ? 1 : 0,
+    k.session_minutes || 30, kidId
+  );
   return getKid(kidId);
 }
 
@@ -193,6 +203,85 @@ function lastDigestTime(kidId) {
   return row ? row.created_at : null;
 }
 
+// ---- Learning plans & objectives (homeschool / self-guided) ---------------
+
+function createPlan(kidId, { title, source }) {
+  const info = db.prepare('INSERT INTO plans (kid_id, title, source) VALUES (?, ?, ?)')
+    .run(kidId, title, source || 'custom');
+  return db.prepare('SELECT * FROM plans WHERE id = ?').get(info.lastInsertRowid);
+}
+
+function listPlans(kidId) {
+  return db.prepare('SELECT * FROM plans WHERE kid_id = ? ORDER BY created_at DESC').all(kidId);
+}
+
+function addObjective(kidId, { plan_id, subject, title, sort }) {
+  const info = db.prepare(
+    'INSERT INTO objectives (kid_id, plan_id, subject, title, sort) VALUES (?, ?, ?, ?, ?)'
+  ).run(kidId, plan_id || null, subject || 'General', title, sort || 0);
+  return db.prepare('SELECT * FROM objectives WHERE id = ?').get(info.lastInsertRowid);
+}
+
+function listObjectives(kidId) {
+  return db.prepare(
+    `SELECT * FROM objectives WHERE kid_id = ?
+     ORDER BY CASE status WHEN 'in_progress' THEN 0 WHEN 'todo' THEN 1 ELSE 2 END, sort, created_at`
+  ).all(kidId);
+}
+
+function getObjective(id) {
+  return db.prepare('SELECT * FROM objectives WHERE id = ?').get(id);
+}
+
+function nextObjective(kidId) {
+  return db.prepare(
+    `SELECT * FROM objectives WHERE kid_id = ? AND status != 'done'
+     ORDER BY CASE status WHEN 'in_progress' THEN 0 ELSE 1 END, sort, created_at LIMIT 1`
+  ).get(kidId);
+}
+
+function setObjectiveStatus(id, status) {
+  const doneAt = status === 'done' ? "datetime('now')" : 'NULL';
+  db.prepare(`UPDATE objectives SET status=?, done_at=${doneAt} WHERE id=?`).run(status, id);
+  return getObjective(id);
+}
+
+function deleteObjective(id) {
+  db.prepare('DELETE FROM objectives WHERE id = ?').run(id);
+}
+
+// ---- Focus sessions --------------------------------------------------------
+
+function startFocus(kidId, { objective_id, goal, target_minutes }) {
+  const info = db.prepare(
+    'INSERT INTO focus_sessions (kid_id, objective_id, goal, target_minutes, started_at_ms) VALUES (?, ?, ?, ?, ?)'
+  ).run(kidId, objective_id || null, goal, target_minutes || 30, Date.now());
+  if (objective_id) setObjectiveStatus(objective_id, 'in_progress');
+  return getFocus(info.lastInsertRowid);
+}
+
+function getFocus(id) {
+  return db.prepare('SELECT * FROM focus_sessions WHERE id = ?').get(id);
+}
+
+function bumpFocusExchanges(id) {
+  db.prepare('UPDATE focus_sessions SET exchanges = exchanges + 1 WHERE id = ?').run(id);
+}
+
+function endFocus(id, reason) {
+  db.prepare('UPDATE focus_sessions SET ended_at_ms=?, ended_reason=? WHERE id=? AND ended_at_ms IS NULL')
+    .run(Date.now(), reason || 'done', id);
+  return getFocus(id);
+}
+
+function recentFocusSessions(kidId, limit = 20) {
+  return db.prepare(
+    `SELECT f.*, o.title AS objective_title FROM focus_sessions f
+     LEFT JOIN objectives o ON o.id = f.objective_id
+     WHERE f.kid_id = ? ORDER BY f.started_at_ms DESC LIMIT ?`
+  ).all(kidId, limit);
+}
+
 // ---- Sessions --------------------------------------------------------------
 
 function createSession(id, parentId, expiresAt) {
@@ -210,7 +299,11 @@ function getSession(id) {
 }
 
 function setSessionKid(id, kidId) {
-  db.prepare('UPDATE sessions SET kid_id = ? WHERE id = ?').run(kidId, id);
+  db.prepare('UPDATE sessions SET kid_id = ?, focus_session_id = NULL WHERE id = ?').run(kidId, id);
+}
+
+function setSessionFocus(id, focusId) {
+  db.prepare('UPDATE sessions SET focus_session_id = ? WHERE id = ?').run(focusId, id);
 }
 
 function destroySession(id) {
@@ -225,5 +318,8 @@ module.exports = {
   addMessage, listMessages, recentMessagesForDigest,
   addSafetyEvent, listSafetyEvents,
   addDigest, listDigests, lastDigestTime,
-  createSession, getSession, setSessionKid, destroySession,
+  createPlan, listPlans, addObjective, listObjectives, getObjective, nextObjective,
+  setObjectiveStatus, deleteObjective,
+  startFocus, getFocus, bumpFocusExchanges, endFocus, recentFocusSessions,
+  createSession, getSession, setSessionKid, setSessionFocus, destroySession,
 };

@@ -20,6 +20,27 @@ This repo is a working **MVP** you can run locally with zero `npm install`.
 - **Parents stay in control.** You connect the model, set per-child oversight, read
   every transcript, approve new topics, and get a plain-English debrief.
 - **Safety by design.** Defense in depth — no single mechanism is trusted alone.
+- **Thoughtful engagement, not screen time.** Curio is *not* built to maximize
+  minutes. It runs intentional, time-boxed Focus Sessions and, when time is up,
+  celebrates and sends the child *offline* to build what they learned.
+
+## Thoughtful engagement (the anti-dopamine core)
+
+Most kids' apps optimize for time-on-screen. Curio deliberately does the opposite:
+
+- **Focus Sessions** — a child starts an intentional, time-boxed session (default
+  30 min, parent-set) around a single goal. Chatting happens *inside* a session, so
+  it's purposeful, not open-ended scrolling.
+- **Anti-rabbit-hole** — the system prompt keeps Curio anchored to the session goal.
+  If the child drifts to "the shiny thing," Curio warmly acknowledges it and steers
+  back. No points, badges, streaks, or cliffhangers whose only job is to keep them
+  clicking.
+- **Depth over novelty** — Curio nudges the child to *finish* one thing before
+  starting another.
+- **Wind-down** — near the time limit, Curio wraps up: a one-line recap plus one
+  concrete real-world next step, framed as "a great stopping point is a win." The
+  kid UI shows a calm "🌿 Great stopping point — go make it real" card, not a
+  "keep going!" hook.
 
 ## Safety rails
 
@@ -32,10 +53,31 @@ This repo is a working **MVP** you can run locally with zero `npm install`.
    steers the child to a trusted adult, and flag the parent immediately.
 4. **Topic approval gates** — per child, choose: approve *every* new topic (best for
    younger kids), or get a *daily* / *weekly* debrief, or open exploration.
-5. **Full transcripts + parent debriefs** — read everything, anytime; generate an
+5. **Parent-set topics** — per child, define **off-limit topics** (custom hard
+   blocks, always enforced and logged) and **priority topics** Curio leans into when
+   natural.
+6. **Full transcripts + parent debriefs** — read everything, anytime; generate an
    AI-written (or local fallback) summary of topics explored and follow-ups.
-6. **Your key, encrypted** — the provider API key is AES-256-GCM encrypted at rest
+7. **Your key, encrypted** — the provider API key is AES-256-GCM encrypted at rest
    and never exposed to the child or their device.
+
+## Homeschool & self-guided learning
+
+Turn Curio into a self-directed tutor with a backbone of objectives:
+
+- **Learning plans** — import from a **starter template**, **paste your curriculum**
+  (one objective per line, optional `Subject: title`), or add objectives one at a
+  time. Bring a unit outline from Time4Learning, Khan, a co-op, etc.
+- **Self-guided tutor** — with homeschool mode on, the kid's start screen offers the
+  next objective as "today's focus," and Curio coaches them through it.
+- **Progress tracking** — objectives move to-do → in-progress → done as the child
+  works.
+- **Printable record** — a per-child learning record (objectives, focus-session
+  minutes, debriefs) at `/api/kids/:id/record.html`, handy for portfolios and state
+  record-keeping.
+
+> Live one-click integrations with specific platforms are a per-partner connector
+> layer (roadmap); the paste/preset import works with any curriculum today.
 
 ## Pricing (platform only — model usage billed by your provider)
 

@@ -40,6 +40,7 @@
       <aside class="side">
         <button class="active" data-panel="kids" onclick="showPanel('kids')">👦 Children</button>
         <button data-panel="approvals" onclick="showPanel('approvals')">✅ Approvals <span id="pendCount"></span></button>
+        <button data-panel="plans" onclick="showPanel('plans')">🏠 Learning plans</button>
         <button data-panel="activity" onclick="showPanel('activity')">📝 Activity</button>
         <button data-panel="safety" onclick="showPanel('safety')">🛡️ Safety</button>
         <button data-panel="provider" onclick="showPanel('provider')">🔌 AI account</button>
@@ -73,6 +74,30 @@
                 <option value="weekly">Weekly debrief</option>
                 <option value="off">Open exploration (transcripts only)</option>
               </select>
+              <label for="kPriority">⭐ Prioritize these topics <span class="muted" style="font-weight:400;">(Curio leans in when natural)</span></label>
+              <input id="kPriority" placeholder="reading, fractions, kindness" />
+              <label for="kBlocked">🚫 Off-limit topics <span class="muted" style="font-weight:400;">(always blocked, parent-only)</span></label>
+              <input id="kBlocked" placeholder="video games, scary movies, YouTubers" />
+              <div class="row">
+                <div style="flex:1;min-width:180px;">
+                  <label for="kMinutes">🌿 Focus session length</label>
+                  <select id="kMinutes">
+                    <option value="15">15 minutes</option>
+                    <option value="20">20 minutes</option>
+                    <option value="30" selected>30 minutes</option>
+                    <option value="45">45 minutes</option>
+                    <option value="60">60 minutes</option>
+                  </select>
+                </div>
+                <div style="flex:1;min-width:180px;">
+                  <label for="kHome">🏠 Homeschool mode</label>
+                  <select id="kHome">
+                    <option value="0">Off — free exploration</option>
+                    <option value="1">On — follow a learning plan</option>
+                  </select>
+                </div>
+              </div>
+              <p class="muted" style="font-size:.82rem;margin-top:.5rem;">🌿 Curio optimizes for finishing a focused session and going offline to build — not for maximizing screen time.</p>
               <div class="form-msg" id="kidMsg"></div>
               <div class="row" style="margin-top:.6rem;">
                 <button class="btn" type="submit">Save child</button>
@@ -87,6 +112,15 @@
           <h2>Pending topic approvals</h2>
           <p class="muted">When a child in "approve every topic" mode wants to explore something new, it waits here for your yes.</p>
           <div id="pendingList" class="grid" style="margin-top:1rem;"></div>
+        </section>
+
+        <!-- LEARNING PLANS -->
+        <section class="panel" id="panel-plans">
+          <h2>Learning plans <span class="muted" style="font-size:1rem;">(self-guided tutor)</span></h2>
+          <p class="muted">Give Curio a backbone of objectives — from a homeschool curriculum, your own list, or a starter template. Curio guides your child through them as a self-directed tutor, tracks progress, and produces a printable record.</p>
+          <label for="planKid">Child</label>
+          <select id="planKid" onchange="loadPlans()" style="max-width:280px;"></select>
+          <div id="plansBody" style="margin-top:1rem;"></div>
         </section>
 
         <!-- ACTIVITY -->

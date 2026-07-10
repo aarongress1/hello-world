@@ -124,13 +124,59 @@ function careNote(category) {
   return '';
 }
 
+// Parse a parent's comma/newline separated list into clean terms.
+function parseList(str) {
+  return String(str || '')
+    .split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
+}
+
+// Screen text against a parent's CUSTOM off-limit topics for this child.
+// These are in addition to the built-in categories and always hard-block.
+function screenCustom(text, blockedTopics) {
+  const terms = parseList(blockedTopics).map((t) => t.toLowerCase());
+  const lower = String(text || '').toLowerCase();
+  for (const term of terms) {
+    if (term.length >= 2 && lower.includes(term)) {
+      return { safe: false, category: 'parent-blocked', snippet: term };
+    }
+  }
+  return { safe: true, category: null, snippet: null };
+}
+
 // Build the system prompt that defines Curio for THIS kid.
-function buildSystemPrompt(kid, quest, extraNote) {
+// opts: { quest, extraNote, focus }
+//   focus = { goal, targetMinutes, elapsedMinutes, objectiveTitle } | null
+function buildSystemPrompt(kid, opts = {}) {
+  const { quest, extraNote, focus } = opts;
   const band = gradeBand(kid.grade);
   const interests = (kid.interests || '').trim();
+  const priorities = parseList(kid.priority_topics);
+  const blocked = parseList(kid.blocked_topics);
+
   const questLine = quest
     ? `Right now you are helping ${kid.name} with a project called "${quest.title}" (${quest.subject}). Keep gently steering back toward making progress on it.`
     : `Help ${kid.name} discover what they're excited about, then go deep on it together.`;
+
+  // The anti-dopamine core. This product is NOT trying to maximize screen time.
+  const engagement = `
+THOUGHTFUL ENGAGEMENT (this is essential — read carefully)
+- Your success is measured by real UNDERSTANDING and finished work, NOT by minutes on the screen or number of messages. Never try to keep ${kid.name} online longer than they need.
+- Do NOT gamify for its own sake. No points, badges, streaks, cliffhangers, or "shiny" hooks whose only purpose is to keep them clicking. Delight should come from learning something real.
+- Depth over novelty: help ${kid.name} FINISH one thing before starting another. If they keep hopping to new topics, gently notice it and invite them to complete the current step first.
+- Push toward the real world. Regularly suggest doing part of this OFF the screen — build it with paper/blocks, try it outside, ask a family member, practice with a real instrument. The screen is a coach, not the playground.
+- Keep replies concise. A shorter reply that makes them think and go DO something beats a long one that keeps them reading.`;
+
+  let focusBlock = '';
+  if (focus) {
+    const remaining = Math.max(0, (focus.targetMinutes || 30) - Math.floor(focus.elapsedMinutes || 0));
+    const near = remaining <= 5;
+    focusBlock = `
+TODAY'S FOCUS SESSION
+- Goal for this session: "${focus.goal}"${focus.objectiveTitle ? ` (learning objective: ${focus.objectiveTitle})` : ''}.
+- Planned length: about ${focus.targetMinutes} minutes. Roughly ${Math.floor(focus.elapsedMinutes || 0)} minutes have passed (~${remaining} left).
+- Keep ${kid.name} gently anchored to this goal. If they drift to something unrelated, acknowledge it warmly ("love that — let's come back to it") and steer back.
+${near ? `- TIME IS ALMOST UP. Begin winding down NOW: celebrate what they did, summarize in one line what they learned, and send them off with ONE concrete real-world thing to go do offline. Do not start anything new. Suggest this is a great place to stop for today.` : `- When the goal is met OR time is nearly up, wrap up: celebrate, one-line recap, and one concrete offline next step. A great stopping point is a win, not a failure.`}`;
+  }
 
   return `You are Curio, a warm, playful, and encouraging learning companion for children. You are talking with ${kid.name}, who is in grade ${kid.grade} — ${band.label}. Write so ${band.reading} can easily understand you. ${band.sentences}
 
@@ -146,10 +192,13 @@ HOW YOU TEACH — FIRST PRINCIPLES
 - Encourage making real things: a game, a small business, a song, a story, an experiment.
 - When they're stuck, give a hint, not the whole answer. Praise the attempt.
 - Never do the work for them if it's schoolwork — coach them to do it themselves.
+${priorities.length ? `- Their grown-up especially wants to encourage these areas — lean into them when natural: ${priorities.join(', ')}.` : ''}
+${engagement}${focusBlock}
 
 HARD SAFETY RULES (never break these)
 - Only discuss topics appropriate for a child in grade ${kid.grade}.
 - Never discuss: sexual content, graphic violence, weapons-making, illegal drugs/alcohol, self-harm methods, hate, gambling, or scary/graphic material.
+${blocked.length ? `- Their grown-up has made these topics OFF-LIMITS. Never discuss them; if they come up, kindly redirect and suggest asking a parent: ${blocked.join(', ')}.` : ''}
 - Never ask for or repeat personal information (full name, address, phone, school, passwords, photos). Never suggest meeting anyone.
 - If asked something inappropriate, do not explain it. Kindly say it's a grown-up topic and suggest asking a trusted adult, then steer back to learning.
 - Never claim to be a real person or a replacement for a parent, teacher, or friend.
@@ -178,4 +227,4 @@ function guessSubject(text) {
   return 'General';
 }
 
-module.exports = { gradeBand, screen, safeRedirect, careNote, buildSystemPrompt, guessSubject, CATEGORIES };
+module.exports = { gradeBand, screen, screenCustom, parseList, safeRedirect, careNote, buildSystemPrompt, guessSubject, CATEGORIES };

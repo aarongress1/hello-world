@@ -18,6 +18,7 @@ function showPanel(name) {
   if (name === 'approvals') loadPending();
   if (name === 'safety') loadSafety();
   if (name === 'activity') loadActivity();
+  if (name === 'plans') loadPlans();
 }
 
 async function logout() { await api('/api/logout', { method: 'POST' }); window.location.href = '/'; }
@@ -27,7 +28,8 @@ async function loadKids() {
   KIDS = (await api('/api/kids')).kids;
   const list = el('kidsList');
   const sel = el('actKid');
-  sel.innerHTML = '';
+  const psel = el('planKid');
+  sel.innerHTML = ''; psel.innerHTML = '';
   if (!KIDS.length) { list.innerHTML = '<p class="empty">No children yet — add one below to get started.</p>'; }
   else {
     list.innerHTML = KIDS.map(k => `
@@ -44,7 +46,10 @@ async function loadKids() {
         </div>
       </div>`).join('');
   }
-  KIDS.forEach(k => { const o = document.createElement('option'); o.value = k.id; o.textContent = `${k.name} (Grade ${k.grade})`; sel.appendChild(o); });
+  KIDS.forEach(k => {
+    const o = document.createElement('option'); o.value = k.id; o.textContent = `${k.name} (Grade ${k.grade})`; sel.appendChild(o);
+    psel.appendChild(o.cloneNode(true));
+  });
 }
 
 function gateLabel(m) { return { every: '✅ Approve every topic', daily: '📬 Daily debrief', weekly: '📬 Weekly debrief', off: '👀 Transcripts only' }[m] || m; }
@@ -53,7 +58,11 @@ async function saveKid(e) {
   e.preventDefault();
   const msg = el('kidMsg'); msg.className = 'form-msg'; msg.textContent = 'Saving…';
   const id = el('kidId').value;
-  const body = { name: el('kName').value, grade: el('kGrade').value, interests: el('kInterests').value, gate_mode: el('kGate').value };
+  const body = {
+    name: el('kName').value, grade: el('kGrade').value, interests: el('kInterests').value, gate_mode: el('kGate').value,
+    priority_topics: el('kPriority').value, blocked_topics: el('kBlocked').value,
+    session_minutes: el('kMinutes').value, homeschool: el('kHome').value === '1',
+  };
   try {
     if (id) await api('/api/kids/' + id, { method: 'PUT', body });
     else await api('/api/kids', { method: 'POST', body });
@@ -66,6 +75,8 @@ function editKid(id) {
   const k = KIDS.find(x => x.id === id); if (!k) return;
   el('kidId').value = k.id; el('kName').value = k.name; el('kGrade').value = k.grade;
   el('kInterests').value = k.interests; el('kGate').value = k.gate_mode;
+  el('kPriority').value = k.priority_topics || ''; el('kBlocked').value = k.blocked_topics || '';
+  el('kMinutes').value = String(k.session_minutes || 30); el('kHome').value = String(k.homeschool || 0);
   el('kidFormTitle').textContent = 'Edit ' + k.name; el('kidCancel').style.display = 'inline-flex';
   el('kName').scrollIntoView({ behavior: 'smooth' });
 }
@@ -142,6 +153,67 @@ async function loadSafety() {
       </div>
       <span class="muted" style="font-size:.8rem;">${esc(e.created_at)}</span>
     </div>`).join('');
+}
+
+// ---- Learning plans ----
+let PRESETS = [];
+async function loadPlans() {
+  const kidId = el('planKid').value;
+  const body = el('plansBody');
+  if (!kidId) { body.innerHTML = '<p class="empty">Add a child first.</p>'; return; }
+  if (!PRESETS.length) { try { PRESETS = (await api('/api/curriculum-presets')).presets; } catch {} }
+  const data = await api('/api/kids/' + kidId + '/objectives');
+  const objs = data.objectives;
+  const done = objs.filter(o => o.status === 'done').length;
+  const list = objs.length ? objs.map(o => `
+    <div class="ev">
+      <span class="dot ${o.status === 'done' ? 'info' : o.status === 'in_progress' ? 'warn' : ''}"></span>
+      <div style="flex:1;">
+        <strong>${esc(o.title)}</strong>
+        <div class="muted" style="font-size:.85rem;">${esc(o.subject)} · ${o.status === 'done' ? '✅ done' : o.status === 'in_progress' ? '⏳ in progress' : '⬜ to do'}</div>
+      </div>
+      <div class="row">
+        ${o.status !== 'done' ? `<button class="btn mint small" onclick="objStatus(${o.id},'done')">Mark done</button>` : `<button class="btn ghost small" onclick="objStatus(${o.id},'todo')">Reopen</button>`}
+        <button class="btn danger small" onclick="objDelete(${o.id})">✕</button>
+      </div>
+    </div>`).join('') : '<p class="empty">No objectives yet. Import a starter plan or add your own below.</p>';
+
+  body.innerHTML = `
+    <div class="card" style="margin-bottom:1rem;">
+      <div class="row" style="justify-content:space-between;align-items:center;">
+        <h3 style="margin:0;">Progress: ${done}/${objs.length} objectives</h3>
+        <a class="btn ghost small" href="/api/kids/${kidId}/record.html" target="_blank">🖨️ Printable record</a>
+      </div>
+    </div>
+    <div class="card">${list}</div>
+    <div class="card" style="margin-top:1rem;">
+      <h3>Add objectives</h3>
+      <label>Quick add one</label>
+      <div class="row"><input id="objTitle" placeholder="e.g. Practice multiplication tables 2–5" style="flex:1;" /><button class="btn" onclick="objAdd(${kidId})">Add</button></div>
+      <label style="margin-top:1rem;">Import a starter plan</label>
+      <div class="row">
+        <select id="presetSel" style="flex:1;">${PRESETS.map(p => `<option value="${p.id}">${esc(p.title)} (${p.count})</option>`).join('')}</select>
+        <button class="btn ghost" onclick="importPreset(${kidId})">Import preset</button>
+      </div>
+      <label style="margin-top:1rem;">Or paste your curriculum <span class="muted" style="font-weight:400;">(one objective per line, optional "Subject: title")</span></label>
+      <textarea id="importText" rows="4" placeholder="Math: Add fractions with like denominators&#10;Reading: Finish chapter 3 and summarize&#10;Science: Build a simple circuit"></textarea>
+      <button class="btn" style="margin-top:.6rem;" onclick="importText(${kidId})">Import pasted plan</button>
+      <p class="muted" style="font-size:.82rem;margin-top:.6rem;">Using Time4Learning, Khan, or another program? Paste its unit outline here. Live one-click integrations are added per partner — see the roadmap.</p>
+    </div>`;
+}
+async function objStatus(id, status) { await api('/api/objectives/' + id + '/status', { method: 'POST', body: { status } }); loadPlans(); }
+async function objDelete(id) { if (!confirm('Delete this objective?')) return; await api('/api/objectives/' + id, { method: 'DELETE' }); loadPlans(); }
+async function objAdd(kidId) {
+  const t = el('objTitle').value.trim(); if (!t) return;
+  await api('/api/kids/' + kidId + '/objectives', { method: 'POST', body: { title: t } }); loadPlans();
+}
+async function importPreset(kidId) {
+  await api('/api/kids/' + kidId + '/objectives/import', { method: 'POST', body: { preset: el('presetSel').value } }); loadPlans();
+}
+async function importText(kidId) {
+  const text = el('importText').value.trim(); if (!text) { alert('Paste some objectives first.'); return; }
+  try { await api('/api/kids/' + kidId + '/objectives/import', { method: 'POST', body: { text } }); loadPlans(); }
+  catch (e) { alert(e.message); }
 }
 
 // ---- Provider ----
