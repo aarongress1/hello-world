@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Parent Dashboard — Curio</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <style>
+    .dash { display: grid; grid-template-columns: 220px 1fr; gap: 24px; padding: 24px 0; }
+    .side { position: sticky; top: 20px; align-self: start; }
+    .side button { display: block; width: 100%; text-align: left; background: transparent; border: 0; font-family: inherit; font-weight: 800; color: var(--ink-soft); padding: .7rem 1rem; border-radius: 12px; cursor: pointer; }
+    .side button.active { background: var(--brand-soft); color: var(--brand-deep); }
+    .panel { display: none; } .panel.active { display: block; }
+    .kid-card { display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; }
+    .badge-mode { font-size:.72rem; font-weight:800; padding:.2rem .6rem; border-radius:999px; background:var(--brand-soft); color:var(--brand-deep); }
+    .row { display:flex; gap:.6rem; flex-wrap:wrap; }
+    .bubble { padding:.6rem .9rem; border-radius:14px; margin:.35rem 0; max-width:80%; }
+    .bubble.kid { background:var(--brand-soft); margin-left:auto; }
+    .bubble.guide { background:#f2f4f8; }
+    .bubble.flag { border:2px solid var(--warn); }
+    .ev { display:flex; gap:.7rem; align-items:center; padding:.6rem 0; border-bottom:1px solid var(--line); }
+    .dot { width:10px; height:10px; border-radius:50%; flex:0 0 auto; }
+    .dot.block { background:var(--danger);} .dot.warn{ background:var(--warn);} .dot.info{background:var(--mint);}
+    .empty { color:var(--ink-soft); padding:1.5rem; text-align:center; }
+    @media (max-width:820px){ .dash{ grid-template-columns:1fr; } .side{ position:static; display:flex; overflow:auto; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <nav class="nav">
+      <div class="logo"><span class="owl">🦉</span> Curio<span class="tag">Kids</span></div>
+      <div class="nav-links">
+        <span class="muted" id="whoami"></span>
+        <a href="#" class="btn ghost small" onclick="logout();return false;">Sign out</a>
+      </div>
+    </nav>
+
+    <div class="dash">
+      <aside class="side">
+        <button class="active" data-panel="kids" onclick="showPanel('kids')">👦 Children</button>
+        <button data-panel="approvals" onclick="showPanel('approvals')">✅ Approvals <span id="pendCount"></span></button>
+        <button data-panel="activity" onclick="showPanel('activity')">📝 Activity</button>
+        <button data-panel="safety" onclick="showPanel('safety')">🛡️ Safety</button>
+        <button data-panel="provider" onclick="showPanel('provider')">🔌 AI account</button>
+        <button data-panel="plan" onclick="showPanel('plan')">⭐ Plan</button>
+      </aside>
+
+      <main>
+        <!-- CHILDREN -->
+        <section class="panel active" id="panel-kids">
+          <h2>Your children</h2>
+          <p class="muted">Add a profile for each child, set their grade and interests, and choose how much oversight you want.</p>
+          <div id="kidsList" class="grid" style="margin:1rem 0;"></div>
+          <div class="card">
+            <h3 id="kidFormTitle">Add a child</h3>
+            <form id="kidForm" onsubmit="return saveKid(event)">
+              <input type="hidden" id="kidId" />
+              <div class="row">
+                <div style="flex:1;min-width:160px;"><label for="kName">Name</label><input id="kName" required maxlength="40" placeholder="First name only" /></div>
+                <div style="width:120px;"><label for="kGrade">Grade</label>
+                  <select id="kGrade">
+                    <option>K</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option>
+                  </select>
+                </div>
+              </div>
+              <label for="kInterests">Interests <span class="muted" style="font-weight:400;">(comma separated)</span></label>
+              <input id="kInterests" placeholder="dinosaurs, Minecraft, drawing, soccer" />
+              <label for="kGate">Oversight mode</label>
+              <select id="kGate">
+                <option value="every">Approve every new topic (best for younger kids)</option>
+                <option value="daily">Daily debrief</option>
+                <option value="weekly">Weekly debrief</option>
+                <option value="off">Open exploration (transcripts only)</option>
+              </select>
+              <div class="form-msg" id="kidMsg"></div>
+              <div class="row" style="margin-top:.6rem;">
+                <button class="btn" type="submit">Save child</button>
+                <button class="btn ghost" type="button" id="kidCancel" style="display:none;" onclick="resetKidForm()">Cancel</button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <!-- APPROVALS -->
+        <section class="panel" id="panel-approvals">
+          <h2>Pending topic approvals</h2>
+          <p class="muted">When a child in "approve every topic" mode wants to explore something new, it waits here for your yes.</p>
+          <div id="pendingList" class="grid" style="margin-top:1rem;"></div>
+        </section>
+
+        <!-- ACTIVITY -->
+        <section class="panel" id="panel-activity">
+          <h2>Activity & debriefs</h2>
+          <label for="actKid">Child</label>
+          <select id="actKid" onchange="loadActivity()" style="max-width:280px;"></select>
+          <div id="activityBody" style="margin-top:1rem;"></div>
+        </section>
+
+        <!-- SAFETY -->
+        <section class="panel" id="panel-safety">
+          <h2>Safety events</h2>
+          <p class="muted">Anything Curio flagged — blocked topics, sensitive feelings, or personal-info moments — appears here.</p>
+          <div id="safetyList" style="margin-top:1rem;"></div>
+        </section>
+
+        <!-- PROVIDER -->
+        <section class="panel" id="panel-provider">
+          <h2>Connect your AI account</h2>
+          <p class="muted">Curio uses <strong>your</strong> Claude or OpenAI account. Your key is encrypted at rest and never shown to your child.</p>
+          <div class="card" style="margin-top:1rem;max-width:520px;">
+            <div id="providerStatus"></div>
+            <form id="providerForm" onsubmit="return saveProvider(event)">
+              <label for="pProvider">Provider</label>
+              <select id="pProvider" onchange="fillModels()">
+                <option value="anthropic">Claude (Anthropic)</option>
+                <option value="openai">OpenAI</option>
+              </select>
+              <label for="pModel">Model</label>
+              <select id="pModel"></select>
+              <label for="pKey">API key</label>
+              <input id="pKey" type="password" placeholder="sk-... / anthropic key" autocomplete="off" />
+              <div class="form-msg" id="provMsg"></div>
+              <div class="row" style="margin-top:.6rem;">
+                <button class="btn" type="submit">Save connection</button>
+                <button class="btn ghost" type="button" onclick="disconnectProvider()">Disconnect</button>
+              </div>
+            </form>
+            <p class="muted" style="font-size:.82rem;margin-top:.8rem;">Demo mode is on if no key is connected — Curio will use a friendly canned guide so you can try the flow.</p>
+          </div>
+        </section>
+
+        <!-- PLAN -->
+        <section class="panel" id="panel-plan">
+          <h2>Your plan</h2>
+          <p class="muted">Current plan: <strong id="curPlan">explorer</strong>. Pricing is for the platform only — model usage is billed by your provider.</p>
+          <div class="price-grid" style="margin-top:1rem;">
+            <div class="card plan"><h3>Explorer</h3><p class="price">$0</p><ul><li>1 child</li><li>Core safety</li><li>Weekly debrief</li></ul><button class="btn ghost" onclick="choosePlan('explorer')">Choose</button></div>
+            <div class="card plan featured"><span class="badge">POPULAR</span><h3>Plus</h3><p class="price">$12<span>/mo</span></p><ul><li>3 children</li><li>All oversight modes</li><li>AI debriefs</li></ul><button class="btn" onclick="choosePlan('plus')">Choose</button></div>
+            <div class="card plan"><h3>Max</h3><p class="price">$29<span>/mo</span></p><ul><li>6 children</li><li>Real-time gates</li><li>Multi-provider</li></ul><button class="btn ghost" onclick="choosePlan('max')">Choose</button></div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+  <script src="/js/common.js"></script>
+  <script src="/js/parent.js"></script>
+</body>
+</html>

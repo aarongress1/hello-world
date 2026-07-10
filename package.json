@@ -1,0 +1,19 @@
+{
+  "name": "curio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Curio — a K–8 learning companion powered by the parent's own LLM account, with age-appropriate safety rails and a parent debrief loop.",
+  "type": "commonjs",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node --experimental-sqlite --no-warnings server/index.js",
+    "dev": "node --experimental-sqlite --no-warnings --watch server/index.js",
+    "seed": "node --experimental-sqlite --no-warnings server/seed.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {},
+  "keywords": ["kids", "education", "llm", "safety", "k-8", "learning"],
+  "license": "UNLICENSED"
+}

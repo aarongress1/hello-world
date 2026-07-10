@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Curio — Where curiosity becomes mastery</title>
+  <meta name="description" content="A K–8 learning companion powered by your own Claude or OpenAI account, with age-appropriate safety rails and a parent debrief loop." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <nav class="nav">
+      <div class="logo"><span class="owl">🦉</span> Curio<span class="tag">Kids</span></div>
+      <div class="nav-links">
+        <a href="#how">How it works</a>
+        <a href="#safety">Safety</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#" class="btn ghost small" onclick="openAuth('login');return false;">Sign in</a>
+        <a href="#" class="btn small" onclick="openAuth('signup');return false;">Get started</a>
+      </div>
+    </nav>
+  </div>
+
+  <header class="hero container">
+    <span class="pill">🔒 Powered by YOUR Claude or OpenAI account</span>
+    <h1>Every kid has a spark.<br><span class="grad">Curio helps them find it.</span></h1>
+    <p class="sub">A friendly learning companion for grades K–8 that turns curiosity into real projects — build a game, start a little business, write a song — with first-principles coaching and safety rails you control.</p>
+    <div class="cta-row">
+      <a href="#" class="btn" onclick="openAuth('signup');return false;">Start free →</a>
+      <a href="#how" class="btn ghost">See how it works</a>
+    </div>
+    <p class="muted" style="margin-top:1rem;font-size:.9rem;">No markup on AI usage — you connect your own provider and pay them directly.</p>
+  </header>
+
+  <section id="how" class="container">
+    <h2 class="section-title">How Curio works</h2>
+    <p class="section-sub">You stay in control. Curio is the safe, encouraging layer between your child and a world-class model.</p>
+    <div class="steps" style="max-width:720px;margin:0 auto;">
+      <div class="step"><div class="num">1</div><div><h3>Connect your model</h3><p class="muted">Link your Claude (Anthropic) or OpenAI account and pick the model you trust. Your key is encrypted and never shared with your child.</p></div></div>
+      <div class="step"><div class="num">2</div><div><h3>Set up each child</h3><p class="muted">Add their grade and interests. Choose how much oversight you want — approve every new topic, or get a daily or weekly debrief.</p></div></div>
+      <div class="step"><div class="num">3</div><div><h3>They explore & build</h3><p class="muted">Curio coaches from first principles — breaking big ideas into tiny steps, asking guiding questions, and celebrating effort to build real confidence.</p></div></div>
+      <div class="step"><div class="num">4</div><div><h3>You stay in the loop</h3><p class="muted">Read the full transcript, approve pending topics, and get a plain-English debrief of what your child explored and where they lit up.</p></div></div>
+    </div>
+  </section>
+
+  <section style="background:var(--brand-soft);">
+    <div class="container">
+      <h2 class="section-title">Built to find their passion</h2>
+      <p class="section-sub">Curio doesn't just answer questions — it helps kids go deep on what excites them.</p>
+      <div class="grid cols-4">
+        <div class="card"><span class="emoji">🎮</span><h3>Build a game</h3><p class="muted">From "what's a rule?" to a playable prototype, one tiny step at a time.</p></div>
+        <div class="card"><span class="emoji">💡</span><h3>Start a business</h3><p class="muted">Find a real problem to solve and turn it into a lemonade-stand-sized venture.</p></div>
+        <div class="card"><span class="emoji">🎵</span><h3>Write a song</h3><p class="muted">Turn a feeling into a beat, a hook, and lyrics they're proud of.</p></div>
+        <div class="card"><span class="emoji">🔬</span><h3>Go deep on anything</h3><p class="muted">Dinosaurs, space, money, code — Curio meets them where their curiosity is.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="safety" class="container">
+    <h2 class="section-title">Safety rails, by design 🛡️</h2>
+    <p class="section-sub">Defense in depth. No single mechanism is trusted on its own — and you set the guardrails.</p>
+    <div class="grid cols-3">
+      <div class="card"><span class="emoji">🎚️</span><h3>Age-tuned by grade</h3><p class="muted">Vocabulary, topics, and reply length adapt to K–2, 3–5, or 6–8. Off-limits subjects are refused gently and redirected.</p></div>
+      <div class="card"><span class="emoji">✅</span><h3>Topic approval gates</h3><p class="muted">For younger kids, every new project waits for your yes. Older kids get a daily or weekly brief — your call, per child.</p></div>
+      <div class="card"><span class="emoji">🔎</span><h3>Two-way screening</h3><p class="muted">Every message in <em>and</em> out is scanned. Sensitive moments (sadness, safety) trigger caring responses and alert you.</p></div>
+      <div class="card"><span class="emoji">📝</span><h3>Full transcripts</h3><p class="muted">Read everything your child and Curio said, anytime. Nothing is hidden from you.</p></div>
+      <div class="card"><span class="emoji">📬</span><h3>Parent debriefs</h3><p class="muted">A warm, plain-English summary of topics explored, skills practiced, and anything to follow up on.</p></div>
+      <div class="card"><span class="emoji">🔐</span><h3>Your key, encrypted</h3><p class="muted">Your provider key is AES-encrypted at rest and never exposed to your child or their device.</p></div>
+    </div>
+  </section>
+
+  <section id="pricing" style="background:var(--brand-soft);">
+    <div class="container">
+      <h2 class="section-title">Simple family pricing</h2>
+      <p class="section-sub">You bring your own AI account, so you only pay us for the safe learning platform — never a markup on model usage.</p>
+      <div class="price-grid">
+        <div class="card plan">
+          <h3>Explorer</h3>
+          <p class="price">$0<span>/forever</span></p>
+          <p class="muted">Try Curio with one child.</p>
+          <ul>
+            <li>1 child profile</li>
+            <li>Bring your own Claude / OpenAI key</li>
+            <li>Core safety screening</li>
+            <li>Full transcripts</li>
+            <li>Weekly debrief</li>
+          </ul>
+          <a href="#" class="btn ghost" onclick="openAuth('signup');return false;">Start free</a>
+        </div>
+        <div class="card plan featured">
+          <span class="badge">MOST POPULAR</span>
+          <h3>Curio Plus</h3>
+          <p class="price">$12<span>/mo</span></p>
+          <p class="muted">For the whole family.</p>
+          <ul>
+            <li>Up to 3 child profiles</li>
+            <li>All oversight modes (approve / daily / weekly)</li>
+            <li>Topic approval gates</li>
+            <li>AI-written parent debriefs</li>
+            <li>Interest & progress tracking</li>
+            <li>Quest library</li>
+          </ul>
+          <a href="#" class="btn" onclick="openAuth('signup');return false;">Start 14-day trial</a>
+        </div>
+        <div class="card plan">
+          <h3>Curio Max</h3>
+          <p class="price">$29<span>/mo</span></p>
+          <p class="muted">Maximum oversight & depth.</p>
+          <ul>
+            <li>Up to 6 child profiles</li>
+            <li>Real-time per-message approval</li>
+            <li>Advanced safety analytics</li>
+            <li>Connect multiple providers</li>
+            <li>Mentor-led quest marketplace</li>
+            <li>Priority support</li>
+          </ul>
+          <a href="#" class="btn ghost" onclick="openAuth('signup');return false;">Choose Max</a>
+        </div>
+      </div>
+      <p class="center muted" style="margin-top:1.5rem;">Model usage (Claude/OpenAI tokens) is billed by your provider at their cost. A typical child session runs a few cents.</p>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <p><strong>🦉 CurioKids</strong> — where curiosity becomes mastery.</p>
+      <p>An MVP demo. Not affiliated with Anthropic or OpenAI. Parent-supervised; not a substitute for adult care.</p>
+    </div>
+  </footer>
+
+  <!-- Auth modal -->
+  <div class="modal-backdrop" id="authModal">
+    <div class="modal">
+      <div class="tabs">
+        <button id="tabLogin" class="active" onclick="switchTab('login')">Sign in</button>
+        <button id="tabSignup" onclick="switchTab('signup')">Create account</button>
+      </div>
+      <h2 id="authTitle">Welcome back</h2>
+      <form id="authForm" onsubmit="return submitAuth(event)">
+        <div id="nameRow" style="display:none;">
+          <label for="name">Your name</label>
+          <input id="name" type="text" autocomplete="name" placeholder="Parent / guardian name" />
+        </div>
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" required placeholder="you@example.com" />
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required placeholder="At least 8 characters" />
+        <div class="form-msg" id="authMsg"></div>
+        <button class="btn" style="width:100%;margin-top:.4rem;" type="submit" id="authSubmit">Continue</button>
+      </form>
+      <p class="center muted" style="margin-top:1rem;font-size:.85rem;">By continuing you agree this is a parent-supervised demo.</p>
+    </div>
+  </div>
+
+  <script src="/js/common.js"></script>
+  <script>
+    let mode = 'login';
+    function openAuth(m) { switchTab(m); el('authModal').classList.add('open'); }
+    function switchTab(m) {
+      mode = m;
+      el('tabLogin').classList.toggle('active', m === 'login');
+      el('tabSignup').classList.toggle('active', m === 'signup');
+      el('nameRow').style.display = m === 'signup' ? 'block' : 'none';
+      el('authTitle').textContent = m === 'signup' ? 'Create your parent account' : 'Welcome back';
+      el('authSubmit').textContent = m === 'signup' ? 'Create account' : 'Sign in';
+      el('password').autocomplete = m === 'signup' ? 'new-password' : 'current-password';
+      el('authMsg').textContent = '';
+    }
+    async function submitAuth(e) {
+      e.preventDefault();
+      const msg = el('authMsg'); msg.className = 'form-msg'; msg.textContent = 'Working…';
+      try {
+        const body = { email: el('email').value, password: el('password').value };
+        if (mode === 'signup') body.name = el('name').value;
+        await api(mode === 'signup' ? '/api/signup' : '/api/login', { method: 'POST', body });
+        window.location.href = '/parent.html';
+      } catch (err) {
+        msg.className = 'form-msg error'; msg.textContent = err.message;
+      }
+      return false;
+    }
+    el('authModal').addEventListener('click', (e) => { if (e.target === el('authModal')) el('authModal').classList.remove('open'); });
+    // If already signed in, offer the dashboard.
+    api('/api/me').then((d) => { if (d.parent) { document.querySelectorAll('.nav-links .btn').forEach(b => b.remove()); const a = document.createElement('a'); a.className = 'btn small'; a.href = '/parent.html'; a.textContent = 'My dashboard →'; document.querySelector('.nav-links').appendChild(a); } }).catch(()=>{});
+  </script>
+</body>
+</html>

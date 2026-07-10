@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Curio</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <style>
+    body { background: linear-gradient(160deg, #efeaff 0%, #fff6ee 100%); min-height: 100vh; }
+    .kid-wrap { max-width: 780px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; min-height: 100vh; }
+    .kid-top { display:flex; align-items:center; justify-content:space-between; padding: 8px 4px 16px; }
+    .kid-top .who { display:flex; align-items:center; gap:.6rem; font-weight:900; font-size:1.2rem; }
+    .kid-top .owl { font-size:2rem; }
+    .quests { display:flex; gap:.5rem; overflow-x:auto; padding-bottom:.6rem; }
+    .qchip { flex:0 0 auto; background:#fff; border:2px solid var(--line); border-radius:999px; padding:.4rem .9rem; font-weight:800; cursor:pointer; font-size:.9rem; }
+    .qchip.active { border-color:var(--brand); background:var(--brand-soft); color:var(--brand-deep); }
+    .qchip.pending { border-color:var(--warn); color:var(--warn); }
+    .qchip.add { background:var(--brand); color:#fff; border-color:var(--brand); }
+    .chat { flex:1; overflow-y:auto; padding: 12px 4px; display:flex; flex-direction:column; gap:.6rem; }
+    .msg { padding:.75rem 1rem; border-radius:20px; max-width:82%; font-size:1.08rem; line-height:1.5; white-space:pre-wrap; }
+    .msg.kid { background:var(--brand); color:#fff; align-self:flex-end; border-bottom-right-radius:6px; }
+    .msg.guide { background:#fff; align-self:flex-start; border-bottom-left-radius:6px; box-shadow:var(--shadow-sm); }
+    .msg.guide.flag { border:2px solid var(--warn); }
+    .typing { align-self:flex-start; color:var(--ink-soft); font-weight:800; padding:.5rem 1rem; }
+    .composer { display:flex; gap:.5rem; padding: 10px 0 6px; position:sticky; bottom:0; }
+    .composer input { flex:1; border-radius:999px; border:2px solid var(--brand-soft); font-size:1.1rem; padding:.85rem 1.2rem; }
+    .composer button { border-radius:999px; }
+    .welcome { text-align:center; color:var(--ink-soft); padding: 2rem 1rem; }
+    .welcome .big { font-size:3rem; }
+    .starter { display:grid; grid-template-columns:1fr 1fr; gap:.6rem; max-width:460px; margin:1rem auto 0; }
+    .starter button { background:#fff; border:2px solid var(--line); border-radius:16px; padding:1rem; font-family:inherit; font-weight:800; cursor:pointer; font-size:1rem; }
+    .starter button:hover { border-color:var(--brand); }
+    .exit { font-size:.85rem; color:var(--ink-soft); font-weight:800; background:transparent; border:0; cursor:pointer; }
+  </style>
+</head>
+<body>
+  <div class="kid-wrap">
+    <div class="kid-top">
+      <div class="who"><span class="owl">🦉</span> <span id="hello">Curio</span></div>
+      <button class="exit" onclick="exitKid()">🔒 Parent area</button>
+    </div>
+    <div class="quests" id="quests"></div>
+    <div class="chat" id="chat"></div>
+    <form class="composer" id="composer" onsubmit="return send(event)">
+      <input id="input" placeholder="Type to Curio…" autocomplete="off" autofocus />
+      <button class="btn" type="submit" id="sendBtn">Send</button>
+    </form>
+  </div>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/kid.js"></script>
+</body>
+</html>
