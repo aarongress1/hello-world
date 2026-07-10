@@ -195,10 +195,14 @@ async function loadPlans() {
         <select id="presetSel" style="flex:1;">${PRESETS.map(p => `<option value="${p.id}">${esc(p.title)} (${p.count})</option>`).join('')}</select>
         <button class="btn ghost" onclick="importPreset(${kidId})">Import preset</button>
       </div>
-      <label style="margin-top:1rem;">Or paste your curriculum <span class="muted" style="font-weight:400;">(one objective per line, optional "Subject: title")</span></label>
-      <textarea id="importText" rows="4" placeholder="Math: Add fractions with like denominators&#10;Reading: Finish chapter 3 and summarize&#10;Science: Build a simple circuit"></textarea>
-      <button class="btn" style="margin-top:.6rem;" onclick="importText(${kidId})">Import pasted plan</button>
-      <p class="muted" style="font-size:.82rem;margin-top:.6rem;">Using Time4Learning, Khan, or another program? Paste its unit outline here. Live one-click integrations are added per partner — see the roadmap.</p>
+      <label style="margin-top:1rem;">Or import from your curriculum <span class="muted" style="font-weight:400;">(Time4Learning, IXL, Abeka, a co-op outline, a CSV export…)</span></label>
+      <textarea id="importText" rows="5" placeholder="Paste your scope & sequence or skill list. It understands most formats:&#10;Math: Add fractions with like denominators&#10;1. Read chapter 3 and summarize&#10;Science:&#10;   Build a simple circuit"></textarea>
+      <div class="row" style="margin-top:.5rem;align-items:center;">
+        <label class="btn ghost small" style="margin:0;cursor:pointer;">📄 Upload .txt / .csv<input type="file" accept=".txt,.csv,text/plain,text/csv" hidden onchange="loadImportFile(event)"></label>
+        <button class="btn" onclick="previewImport(${kidId})">Preview import →</button>
+      </div>
+      <div id="importPreview" style="margin-top:.8rem;"></div>
+      <p class="muted" style="font-size:.82rem;margin-top:.6rem;">Have a PDF? Open it, select the text, copy, and paste above. Most curricula have no public API, so paste/upload is the universal path — this understands lists, "Subject: item", CSV, and unit headers.</p>
     </div>`;
 }
 async function objStatus(id, status) { await api('/api/objectives/' + id + '/status', { method: 'POST', body: { status } }); loadPlans(); }
@@ -210,10 +214,40 @@ async function objAdd(kidId) {
 async function importPreset(kidId) {
   await api('/api/kids/' + kidId + '/objectives/import', { method: 'POST', body: { preset: el('presetSel').value } }); loadPlans();
 }
-async function importText(kidId) {
-  const text = el('importText').value.trim(); if (!text) { alert('Paste some objectives first.'); return; }
-  try { await api('/api/kids/' + kidId + '/objectives/import', { method: 'POST', body: { text } }); loadPlans(); }
-  catch (e) { alert(e.message); }
+let PARSED_ROWS = null;
+function loadImportFile(e) {
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => { el('importText').value = r.result; };
+  r.readAsText(f);
+}
+async function previewImport(kidId) {
+  const text = el('importText').value.trim();
+  if (!text) { alert('Paste or upload your curriculum first.'); return; }
+  try {
+    const res = await api('/api/kids/' + kidId + '/objectives/parse', { method: 'POST', body: { text } });
+    PARSED_ROWS = res.rows;
+    renderPreview(kidId, res.rows);
+  } catch (e) { alert(e.message); }
+}
+function renderPreview(kidId, rows) {
+  const box = el('importPreview');
+  if (!rows.length) { box.innerHTML = '<p class="muted">Couldn\'t find any objectives — check the text and try again.</p>'; return; }
+  box.innerHTML = `<div class="card" style="background:var(--brand-soft);border:0;">
+    <strong>Found ${rows.length} objective${rows.length > 1 ? 's' : ''}</strong> — review, then import:
+    <div style="max-height:220px;overflow:auto;margin:.5rem 0;">
+      ${rows.map(r => `<div style="padding:.25rem 0;font-size:.9rem;"><span class="badge-mode">${esc(r.subject)}</span> ${esc(r.title)}</div>`).join('')}
+    </div>
+    <div class="row"><button class="btn mint" onclick="confirmImport(${kidId})">✓ Import these ${rows.length}</button>
+    <button class="btn ghost" onclick="PARSED_ROWS=null;el('importPreview').innerHTML='';">Cancel</button></div>
+  </div>`;
+}
+async function confirmImport(kidId) {
+  if (!PARSED_ROWS || !PARSED_ROWS.length) return;
+  try {
+    await api('/api/kids/' + kidId + '/objectives/import', { method: 'POST', body: { rows: PARSED_ROWS } });
+    PARSED_ROWS = null; el('importText').value = ''; loadPlans();
+  } catch (e) { alert(e.message); }
 }
 
 // ---- Provider ----

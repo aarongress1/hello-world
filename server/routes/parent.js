@@ -4,6 +4,7 @@ const store = require('../store');
 const { requireParent } = require('../session');
 const { KNOWN_MODELS, CURRICULUM_PRESETS } = require('../llm');
 const safety = require('../safety');
+const { parseCurriculum } = require('../importer');
 
 const PLAN_KID_LIMIT = { explorer: 1, plus: 3, max: 6 };
 const GATE_MODES = ['every', 'daily', 'weekly', 'off'];
@@ -118,12 +119,22 @@ module.exports = function registerParent(app) {
     res.json({ objectives: store.listObjectives(kidId), plans: store.listPlans(kidId) });
   }));
 
-  // Import objectives: from a preset, or from pasted text (one per line,
-  // optional "Subject: title"), or a single added objective.
+  // Preview parse: turn pasted/uploaded curriculum text into objectives WITHOUT
+  // saving, so the parent can review before importing.
+  app.post('/api/kids/:id/objectives/parse', requireParent(async (req, res) => {
+    const kidId = Number(req.params.id);
+    if (!store.kidBelongsToParent(kidId, req.parent.id)) return res.json({ error: 'Not found.' }, 404);
+    const rows = parseCurriculum(String(req.body?.text || ''));
+    res.json({ ok: true, rows, count: rows.length });
+  }));
+
+  // Import objectives from: a preset, already-parsed rows (from the preview),
+  // or raw pasted text (parsed with the generalized importer).
   app.post('/api/kids/:id/objectives/import', requireParent(async (req, res) => {
     const kidId = Number(req.params.id);
     if (!store.kidBelongsToParent(kidId, req.parent.id)) return res.json({ error: 'Not found.' }, 404);
     const presetId = req.body?.preset;
+    const providedRows = Array.isArray(req.body?.rows) ? req.body.rows : null;
     const text = String(req.body?.text || '');
     let rows = [];
     let source = 'custom';
@@ -134,18 +145,20 @@ module.exports = function registerParent(app) {
       rows = p.objectives.map(([subject, title]) => ({ subject, title }));
       source = `preset:${presetId}`;
       planTitle = p.title;
+    } else if (providedRows) {
+      rows = providedRows
+        .filter((r) => r && r.title)
+        .map((r) => ({ subject: String(r.subject || safety.guessSubject(r.title)).slice(0, 40), title: String(r.title).slice(0, 200) }));
+      source = 'import';
     } else if (text.trim()) {
-      rows = text.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
-        const m = line.match(/^([^:]{2,30}):\s*(.+)$/);
-        return m ? { subject: m[1].trim(), title: m[2].trim() } : { subject: safety.guessSubject(line), title: line };
-      });
+      rows = parseCurriculum(text);
       source = 'import';
     }
     if (!rows.length) return res.json({ error: 'Nothing to import — paste some objectives or choose a preset.' }, 400);
 
     const plan = store.createPlan(kidId, { title: String(planTitle).slice(0, 120), source });
-    rows.forEach((r, i) => store.addObjective(kidId, { plan_id: plan.id, subject: r.subject, title: String(r.title).slice(0, 200), sort: i }));
-    res.json({ ok: true, plan, objectives: store.listObjectives(kidId) });
+    rows.forEach((r, i) => store.addObjective(kidId, { plan_id: plan.id, subject: r.subject, title: r.title, sort: i }));
+    res.json({ ok: true, plan, objectives: store.listObjectives(kidId), imported: rows.length });
   }));
 
   app.post('/api/kids/:id/objectives', requireParent(async (req, res) => {
