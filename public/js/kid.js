@@ -16,8 +16,73 @@ async function boot() {
   KID = ctx.kid; QUESTS = ctx.quests || []; OBJECTIVES = ctx.objectives || []; NEXT_OBJ = ctx.nextObjective;
   chosenMinutes = KID.session_minutes || 30;
   el('hello').textContent = `Hi ${KID.name}!`;
+  initVoice();
   if (ctx.activeFocus) { FOCUS = ctx.activeFocus; enterSession(ctx.messages || []); }
   else renderStart();
+}
+
+// ---- Voice: Curio speaks its replies, and the kid can talk instead of type.
+// Uses the browser's built-in speech (free, no API cost). Works in Chrome/Edge;
+// speaking works nearly everywhere, listening needs a supporting browser.
+let voiceOn = localStorage.getItem('curio_voice') !== 'off';
+let recog = null, listening = false;
+
+function initVoice() {
+  updateVoiceBtn();
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SR) {
+    recog = new SR();
+    recog.lang = 'en-US'; recog.interimResults = true; recog.continuous = false;
+    recog.onresult = (e) => {
+      let t = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) t += e.results[i][0].transcript;
+      el('input').value = t;
+      if (e.results[e.results.length - 1].isFinal) { stopMic(); if (t.trim()) send(); }
+    };
+    recog.onend = stopMic;
+    recog.onerror = stopMic;
+  } else {
+    const m = el('micBtn'); if (m) m.style.display = 'none'; // no speech input support
+  }
+}
+function toggleVoice() {
+  voiceOn = !voiceOn;
+  localStorage.setItem('curio_voice', voiceOn ? 'on' : 'off');
+  if (!voiceOn && window.speechSynthesis) window.speechSynthesis.cancel();
+  updateVoiceBtn();
+}
+function updateVoiceBtn() {
+  const b = el('voiceToggle'); if (b) b.textContent = voiceOn ? '🔊 Voice on' : '🔇 Voice off';
+}
+function pickVoice() {
+  const vs = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+  return vs.find(v => /en[-_]?US/i.test(v.lang) && /female|Samantha|Google US English|Zira|Jenny|Aria/i.test(v.name))
+    || vs.find(v => /^en/i.test(v.lang)) || vs[0] || null;
+}
+function speak(text) {
+  if (!voiceOn || !window.speechSynthesis) return;
+  const clean = String(text).replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}️]/gu, '').replace(/\s+/g, ' ').trim();
+  if (!clean) return;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(clean);
+  const v = pickVoice(); if (v) u.voice = v;
+  u.rate = 0.98; u.pitch = 1.05;
+  u.onstart = () => document.body.classList.add('speaking');
+  u.onend = () => document.body.classList.remove('speaking');
+  window.speechSynthesis.speak(u);
+}
+function toggleMic() {
+  if (!recog) return;
+  if (listening) { stopMic(); return; }
+  if (window.speechSynthesis) window.speechSynthesis.cancel(); // so it doesn't hear itself
+  try { recog.start(); listening = true; el('micBtn').classList.add('listening'); el('input').placeholder = 'Listening…'; }
+  catch (e) { /* already running */ }
+}
+function stopMic() {
+  listening = false;
+  const m = el('micBtn'); if (m) m.classList.remove('listening');
+  el('input').placeholder = 'Type or tap 🎤 to talk…';
+  try { if (recog) recog.stop(); } catch (e) {}
 }
 
 // ---- Start screen: choose today's focus, intentionally ----
@@ -55,7 +120,7 @@ async function start(objectiveId, goal) {
     const r = await api('/api/focus/start', { method: 'POST', body: { objectiveId, goal, targetMinutes: chosenMinutes } });
     FOCUS = r.focus; windDownShown = false;
     enterSession([]);
-    addBubble('guide', firstPrompt(), false);
+    addBubble('guide', firstPrompt(), false, true);
   } catch (e) { alert(e.message); }
 }
 function firstPrompt() {
@@ -105,18 +170,19 @@ async function newQuest() {
     const r = await api('/api/quests', { method: 'POST', body: { title: title.trim() } });
     if (r.error) { addBubble('guide', r.error, true); return; }
     QUESTS.unshift(r.quest); activeQuest = r.quest.id; renderQuests();
-    if (r.needsApproval) addBubble('guide', `Great idea! I asked your grown-up if we can explore "${r.quest.title}". As soon as they say yes, we'll start! 🌟`, false);
-    else addBubble('guide', `Yes! Let's explore "${r.quest.title}"! What do you already know about it? 🚀`, false);
+    if (r.needsApproval) addBubble('guide', `Great idea! I asked your grown-up if we can explore "${r.quest.title}". As soon as they say yes, we'll start! 🌟`, false, true);
+    else addBubble('guide', `Yes! Let's explore "${r.quest.title}"! What do you already know about it? 🚀`, false, true);
   } catch (e) { alert(e.message); }
 }
 
 // ---- Messaging ----
-function addBubble(role, text, flagged) {
+function addBubble(role, text, flagged, speakIt) {
   const div = document.createElement('div');
   div.className = `msg ${role === 'kid' ? 'kid' : 'guide'}${flagged ? ' flag' : ''}`;
   div.textContent = text;
   el('chat').appendChild(div);
   scrollDown();
+  if (role === 'guide' && speakIt) speak(text); // only speak fresh replies, not replayed history
 }
 function scrollDown() { const c = el('chat'); c.scrollTop = c.scrollHeight; }
 
@@ -134,7 +200,7 @@ async function send(e) {
   try {
     const r = await api('/api/message', { method: 'POST', body: { text, questId: activeQuest } });
     typing.remove();
-    addBubble('guide', r.reply, r.flagged);
+    addBubble('guide', r.reply, r.flagged, true);
     updateFocusHeader();
     if (r.windDown && !windDownShown) showWindDown();
   } catch (err) {
