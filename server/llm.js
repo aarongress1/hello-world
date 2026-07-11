@@ -77,6 +77,18 @@ async function openaiComplete({ apiKey, model, system, messages, maxTokens }) {
   return (data.choices?.[0]?.message?.content || '…').trim();
 }
 
+// ---- Natural text-to-speech (OpenAI voices) --------------------------------
+
+async function tts({ apiKey, model, voice, text }) {
+  const res = await fetch('https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model: model || 'tts-1', voice: voice || 'nova', input: String(text).slice(0, 4000) }),
+  });
+  if (!res.ok) throw providerError('OpenAI TTS', res.status, await safeText(res));
+  return Buffer.from(await res.arrayBuffer());
+}
+
 // ---- Provider-side moderation (OpenAI only) --------------------------------
 
 // Returns { flagged, categories } or null if unavailable. Used as an extra
@@ -182,4 +194,4 @@ const CURRICULUM_PRESETS = {
   },
 };
 
-module.exports = { complete, moderate, demoReply, defaultSecret, modelForTier, modelForBand, KNOWN_MODELS, CURRICULUM_PRESETS, demoMode };
+module.exports = { complete, moderate, tts, demoReply, defaultSecret, modelForTier, modelForBand, KNOWN_MODELS, CURRICULUM_PRESETS, demoMode };

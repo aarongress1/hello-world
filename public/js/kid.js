@@ -26,6 +26,7 @@ async function boot() {
 // speaking works nearly everywhere, listening needs a supporting browser.
 let voiceOn = localStorage.getItem('curio_voice') !== 'off';
 let recog = null, listening = false;
+let serverTTS = true, curAudio = null; // serverTTS: use natural OpenAI voice until we learn it's unavailable
 
 function initVoice() {
   updateVoiceBtn();
@@ -40,7 +41,7 @@ function initVoice() {
       if (e.results[e.results.length - 1].isFinal) { stopMic(); if (t.trim()) send(); }
     };
     recog.onend = stopMic;
-    recog.onerror = stopMic;
+    recog.onerror = (e) => { stopMic(); micError(e && e.error); };
   } else {
     const m = el('micBtn'); if (m) m.style.display = 'none'; // no speech input support
   }
@@ -48,7 +49,7 @@ function initVoice() {
 function toggleVoice() {
   voiceOn = !voiceOn;
   localStorage.setItem('curio_voice', voiceOn ? 'on' : 'off');
-  if (!voiceOn && window.speechSynthesis) window.speechSynthesis.cancel();
+  if (!voiceOn) stopAudio();
   updateVoiceBtn();
 }
 function updateVoiceBtn() {
@@ -59,10 +60,40 @@ function pickVoice() {
   return vs.find(v => /en[-_]?US/i.test(v.lang) && /female|Samantha|Google US English|Zira|Jenny|Aria/i.test(v.name))
     || vs.find(v => /^en/i.test(v.lang)) || vs[0] || null;
 }
-function speak(text) {
-  if (!voiceOn || !window.speechSynthesis) return;
-  const clean = String(text).replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}️]/gu, '').replace(/\s+/g, ' ').trim();
+function stripForSpeech(text) {
+  return String(text).replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}️]/gu, '').replace(/\s+/g, ' ').trim();
+}
+function stopAudio() {
+  if (curAudio) { try { curAudio.pause(); } catch (e) {} curAudio = null; }
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  document.body.classList.remove('speaking');
+}
+async function speak(text) {
+  if (!voiceOn) return;
+  const clean = stripForSpeech(text);
   if (!clean) return;
+  stopAudio();
+  // Prefer the natural server voice (OpenAI). Fall back to the browser voice.
+  if (serverTTS) {
+    try {
+      const res = await fetch('/api/tts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: clean }) });
+      const ct = res.headers.get('content-type') || '';
+      if (res.ok && ct.includes('audio')) {
+        const url = URL.createObjectURL(await res.blob());
+        const a = new Audio(url); curAudio = a;
+        document.body.classList.add('speaking');
+        a.onended = () => { document.body.classList.remove('speaking'); URL.revokeObjectURL(url); if (curAudio === a) curAudio = null; };
+        a.onerror = () => { document.body.classList.remove('speaking'); browserSpeak(clean); };
+        a.play().catch(() => browserSpeak(clean));
+        return;
+      }
+      if (res.status === 402) serverTTS = false; // no OpenAI key configured — stop trying
+    } catch (e) { /* network — fall back this time */ }
+  }
+  browserSpeak(clean);
+}
+function browserSpeak(clean) {
+  if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(clean);
   const v = pickVoice(); if (v) u.voice = v;
@@ -71,12 +102,26 @@ function speak(text) {
   u.onend = () => document.body.classList.remove('speaking');
   window.speechSynthesis.speak(u);
 }
+function micError(err) {
+  let msg;
+  if (err === 'not-allowed' || err === 'service-not-allowed') {
+    msg = window.isSecureContext
+      ? "I need permission to use the microphone — tap 🎤 again and choose Allow."
+      : "To talk to me, open Curio on this device at http://localhost:3000, or use a secure https link — the microphone is blocked on a plain http Wi-Fi address.";
+  } else if (err === 'no-speech') { msg = "I didn't hear anything — tap 🎤 and try again."; }
+  else if (err === 'network') { msg = 'Talking needs an internet connection.'; }
+  else { msg = "The microphone didn't work here. You can type instead, or try the Chrome browser."; }
+  addBubble('guide', '🎤 ' + msg, false, false);
+}
 function toggleMic() {
-  if (!recog) return;
   if (listening) { stopMic(); return; }
-  if (window.speechSynthesis) window.speechSynthesis.cancel(); // so it doesn't hear itself
-  try { recog.start(); listening = true; el('micBtn').classList.add('listening'); el('input').placeholder = 'Listening…'; }
-  catch (e) { /* already running */ }
+  if (!recog) { micError('unsupported'); return; }
+  if (!window.isSecureContext) { micError('not-allowed'); return; } // http-over-WiFi blocks the mic
+  stopAudio(); // so it doesn't hear itself
+  try {
+    recog.start(); listening = true;
+    el('micBtn').classList.add('listening'); el('input').placeholder = 'Listening…';
+  } catch (e) { stopMic(); }
 }
 function stopMic() {
   listening = false;

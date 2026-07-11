@@ -4,7 +4,7 @@ const store = require('../store');
 const { requireParent } = require('../session');
 const safety = require('../safety');
 const llm = require('../llm');
-const { demoMode } = require('../config');
+const { demoMode, tts: ttsCfg } = require('../config');
 
 // Categories that are hard-blocked outright (no model call). Self-harm and
 // distress are handled with a *caring* response path instead of a cold block.
@@ -61,6 +61,25 @@ module.exports = function registerChat(app) {
       store.setSessionFocus(req.sid, null);
     }
     res.json({ ok: true });
+  }));
+
+  // Natural voice: synthesize Curio's reply with an OpenAI voice. Returns MP3
+  // audio, or 402 if no OpenAI key is available (client then uses browser voice).
+  app.post('/api/tts', requireParent(async (req, res) => {
+    const text = String(req.body?.text || '').slice(0, 1200).trim();
+    if (!text) return res.json({ error: 'No text.' }, 400);
+    // Resolve an OpenAI key: env override → parent's BYO OpenAI key → bundled OpenAI.
+    let key = ttsCfg.key;
+    if (!key) { const p = store.getProviderSecret(req.parent.id); if (p?.provider === 'openai') key = p.apiKey; }
+    if (!key) { const d = llm.defaultSecret(); if (d?.provider === 'openai') key = d.apiKey; }
+    if (!key) return res.json({ error: 'no-tts' }, 402);
+    try {
+      const audio = await llm.tts({ apiKey: key, model: ttsCfg.model, voice: ttsCfg.voice, text });
+      res.writeHead(200, { 'content-type': 'audio/mpeg', 'cache-control': 'no-store' });
+      return res.end(audio);
+    } catch {
+      return res.json({ error: 'tts-failed' }, 200); // let the client fall back to browser voice
+    }
   }));
 
   // A kid proposes a new project/quest. In 'every' mode it needs a parent's

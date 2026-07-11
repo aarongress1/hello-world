@@ -35,6 +35,15 @@ const config = {
     apiKey: process.env.CURIO_AI_KEY || null,
     model: process.env.CURIO_AI_MODEL || null,        // optional; defaults per provider
   },
+
+  // Natural text-to-speech (OpenAI voices). Falls back to the browser's built-in
+  // voice if no key is available. Needs an OpenAI key: CURIO_TTS_KEY, or a
+  // connected OpenAI provider (bundled or a parent's BYO key).
+  tts: {
+    key: process.env.CURIO_TTS_KEY || null,
+    voice: process.env.CURIO_TTS_VOICE || 'nova',     // nova | fable | shimmer | alloy | echo | onyx
+    model: process.env.CURIO_TTS_MODEL || 'tts-1',    // or 'gpt-4o-mini-tts'
+  },
 };
 
 if (config.appSecret === 'dev-insecure-secret-change-me') {
