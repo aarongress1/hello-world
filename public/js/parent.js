@@ -9,8 +9,34 @@ async function boot() {
   try { MODELS = (await api('/api/providers/models')).models; } catch {}
   fillModels();
   await Promise.all([loadKids(), loadPending(), loadProvider(), loadSafety()]);
-  renderAiBanner();
+  refreshStatus();
 }
+
+// Refresh the top-of-dashboard status widgets after any relevant change.
+function refreshStatus() { renderAiBanner(); renderChecklist(); }
+
+// First-run setup checklist — disappears once real AI is on and a child exists.
+async function renderChecklist() {
+  const box = el('setupChecklist'); if (!box) return;
+  if (localStorage.getItem('curio_setup_done') === '1') { box.innerHTML = ''; return; }
+  let me; try { me = await api('/api/me'); } catch { return; }
+  const hasAI = me.aiConnected, hasKid = KIDS.length > 0;
+  if (hasAI && hasKid) { box.innerHTML = ''; return; } // ready — stop nagging
+  const step = (done, label, cta, onclick) => `<div style="display:flex;align-items:center;gap:.6rem;padding:.35rem 0;">
+    <span style="font-size:1.2rem;">${done ? '✅' : '⬜'}</span>
+    <span style="flex:1;${done ? 'color:var(--ink-soft);text-decoration:line-through;' : 'font-weight:800;'}">${label}</span>
+    ${done ? '' : `<button class="btn small" onclick="${onclick}">${cta}</button>`}</div>`;
+  box.innerHTML = `<div class="card" style="margin-bottom:1rem;border:2px solid var(--brand);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem;">
+      <h3 style="margin:0;">👋 Get set up in 3 steps</h3>
+      <button style="background:none;border:0;color:var(--ink-soft);cursor:pointer;font-weight:800;" onclick="dismissChecklist()">Hide</button>
+    </div>
+    ${step(hasAI, 'Turn on real AI (paste your key + Test connection)', 'Connect', "showPanel('provider')")}
+    ${step(hasKid, 'Add a child profile', 'Add child', "showPanel('kids')")}
+    ${step(false, 'Start a session and hand them the device', 'Show me', "showPanel('kids')")}
+  </div>`;
+}
+function dismissChecklist() { localStorage.setItem('curio_setup_done', '1'); el('setupChecklist').innerHTML = ''; }
 
 // Top-of-dashboard banner: is real AI on, or are we in demo mode?
 async function renderAiBanner() {
@@ -81,7 +107,7 @@ async function saveKid(e) {
   try {
     if (id) await api('/api/kids/' + id, { method: 'PUT', body });
     else await api('/api/kids', { method: 'POST', body });
-    resetKidForm(); await loadKids();
+    resetKidForm(); await loadKids(); refreshStatus();
     msg.className = 'form-msg ok'; msg.textContent = 'Saved!';
   } catch (err) { msg.className = 'form-msg error'; msg.textContent = err.message; }
   return false;
@@ -287,7 +313,7 @@ async function saveProvider(e) {
   try {
     await api('/api/provider', { method: 'POST', body: { provider: el('pProvider').value, model: el('pModel').value, apiKey: el('pKey').value } });
     el('pKey').value = ''; msg.className = 'form-msg ok'; msg.textContent = 'Saved! Tap "Test connection" to confirm it works.';
-    loadProvider(); renderAiBanner();
+    loadProvider(); refreshStatus();
   } catch (err) { msg.className = 'form-msg error'; msg.textContent = err.message; }
   return false;
 }
@@ -306,11 +332,11 @@ async function testProvider() {
     if (r.ok) { msg.className = 'form-msg ok'; msg.textContent = `✅ Working! ${r.provider} / ${r.model} responded.`; }
     else { msg.className = 'form-msg error'; msg.textContent = '⚠️ ' + r.error; }
   } catch (err) { msg.className = 'form-msg error'; msg.textContent = err.message; }
-  loadProvider(); renderAiBanner();
+  loadProvider(); refreshStatus();
 }
 async function disconnectProvider() {
   if (!confirm('Disconnect your AI account? Curio will fall back to demo mode.')) return;
-  await api('/api/provider', { method: 'DELETE' }); loadProvider(); renderAiBanner();
+  await api('/api/provider', { method: 'DELETE' }); loadProvider(); refreshStatus();
 }
 
 // ---- Plan ----
