@@ -9,6 +9,21 @@ async function boot() {
   try { MODELS = (await api('/api/providers/models')).models; } catch {}
   fillModels();
   await Promise.all([loadKids(), loadPending(), loadProvider(), loadSafety()]);
+  renderAiBanner();
+}
+
+// Top-of-dashboard banner: is real AI on, or are we in demo mode?
+async function renderAiBanner() {
+  let me; try { me = await api('/api/me'); } catch { return; }
+  const b = el('aiBanner'); if (!b) return;
+  if (me.aiConnected) {
+    const how = me.bundled ? 'server key' : (me.provider ? `${me.provider.provider} · ${me.provider.model}` : 'connected');
+    b.innerHTML = `<div class="card" style="background:#eafaf2;border:0;margin-bottom:1rem;">✅ <strong>Real AI is on.</strong> <span class="muted">(${esc(how)})</span></div>`;
+  } else {
+    b.innerHTML = `<div class="card" style="background:#fff6e9;border:0;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+      <span>⚠️ <strong>Demo mode</strong> — Curio is giving canned replies. Connect your AI account to turn on real tutoring.</span>
+      <button class="btn small" onclick="showPanel('provider')">Connect AI →</button></div>`;
+  }
 }
 
 function showPanel(name) {
@@ -271,13 +286,31 @@ async function saveProvider(e) {
   const msg = el('provMsg'); msg.className = 'form-msg'; msg.textContent = 'Saving…';
   try {
     await api('/api/provider', { method: 'POST', body: { provider: el('pProvider').value, model: el('pModel').value, apiKey: el('pKey').value } });
-    el('pKey').value = ''; msg.className = 'form-msg ok'; msg.textContent = 'Connected!'; loadProvider();
+    el('pKey').value = ''; msg.className = 'form-msg ok'; msg.textContent = 'Saved! Tap "Test connection" to confirm it works.';
+    loadProvider(); renderAiBanner();
   } catch (err) { msg.className = 'form-msg error'; msg.textContent = err.message; }
   return false;
 }
+// Make a real call to confirm the key works. If a key is typed but not yet
+// saved, save it first so one tap does the whole thing.
+async function testProvider() {
+  const msg = el('provMsg'); msg.className = 'form-msg'; msg.textContent = 'Testing…';
+  if (el('pKey').value.trim()) {
+    try {
+      await api('/api/provider', { method: 'POST', body: { provider: el('pProvider').value, model: el('pModel').value, apiKey: el('pKey').value } });
+      el('pKey').value = '';
+    } catch (err) { msg.className = 'form-msg error'; msg.textContent = err.message; return; }
+  }
+  try {
+    const r = await api('/api/provider/test', { method: 'POST' });
+    if (r.ok) { msg.className = 'form-msg ok'; msg.textContent = `✅ Working! ${r.provider} / ${r.model} responded.`; }
+    else { msg.className = 'form-msg error'; msg.textContent = '⚠️ ' + r.error; }
+  } catch (err) { msg.className = 'form-msg error'; msg.textContent = err.message; }
+  loadProvider(); renderAiBanner();
+}
 async function disconnectProvider() {
   if (!confirm('Disconnect your AI account? Curio will fall back to demo mode.')) return;
-  await api('/api/provider', { method: 'DELETE' }); loadProvider();
+  await api('/api/provider', { method: 'DELETE' }); loadProvider(); renderAiBanner();
 }
 
 // ---- Plan ----

@@ -1,6 +1,7 @@
 'use strict';
 
 const store = require('../store');
+const llm = require('../llm');
 const { startSession, endSession, currentSession, requireParent } = require('../session');
 
 function validEmail(e) { return typeof e === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e); }
@@ -35,9 +36,13 @@ module.exports = function registerAuth(app) {
   app.get('/api/me', async (req, res) => {
     const ctx = currentSession(req);
     if (!ctx) return res.json({ parent: null });
+    const provider = store.getProviderMeta(ctx.parent.id);
     res.json({
       parent: publicParent(ctx.parent),
-      provider: store.getProviderMeta(ctx.parent.id),
+      provider,
+      // "Real AI live?" = this parent connected a key, OR a server bundled key exists.
+      aiConnected: !!provider || !!llm.defaultSecret(),
+      bundled: !provider && !!llm.defaultSecret(),
       selectedKidId: ctx.session.kid_id || null,
     });
   });

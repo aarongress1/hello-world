@@ -9,15 +9,13 @@ devices over your home WiFi (or a free HTTPS tunnel). Perfect for a pilot.
 1. Install **Node.js 22.5+** from [nodejs.org](https://nodejs.org).
 2. You already cloned the project to
    `C:\Users\aaron\Documents\Gress-2\OtherWorlds\CurioKids`.
-3. In that folder, copy **`.env.example`** to **`.env`** and open it:
-   - Set `APP_SECRET` to any long random string.
-   - To use the **real** model (recommended), uncomment and fill:
-     ```
-     CURIO_AI_PROVIDER=anthropic
-     CURIO_AI_KEY=sk-ant-...        # from console.anthropic.com (an API key)
-     CURIO_AI_MODEL=claude-sonnet-5
-     ```
-     Leave them blank to run in friendly demo mode.
+3. In that folder, copy **`.env.example`** to **`.env`** and set `APP_SECRET` to any
+   long random string. (`start.bat` will create `.env` for you if you skip this.)
+
+> **Turning on real AI — the easy way:** you do **not** need to edit `.env` for the
+> API key. Once the app is running, open the **parent dashboard → 🔌 AI account**,
+> paste your Anthropic key, and click **Test connection**. Green = real tutoring is
+> on. (Editing `CURIO_AI_KEY` in `.env` is only for the "bundled" server setup.)
 
 ## 2. Start it
 - **Windows:** double-click **`start.bat`** (or run `npm start`).

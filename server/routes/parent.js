@@ -2,7 +2,8 @@
 
 const store = require('../store');
 const { requireParent } = require('../session');
-const { KNOWN_MODELS, CURRICULUM_PRESETS } = require('../llm');
+const llm = require('../llm');
+const { KNOWN_MODELS, CURRICULUM_PRESETS } = llm;
 const safety = require('../safety');
 const { parseCurriculum } = require('../importer');
 
@@ -41,6 +42,31 @@ module.exports = function registerParent(app) {
   app.del('/api/provider', requireParent(async (req, res) => {
     store.clearProvider(req.parent.id);
     res.json({ ok: true });
+  }));
+
+  // Make a tiny real call to confirm the connected AI account actually works —
+  // so a parent gets instant "it's live" feedback instead of guessing.
+  app.post('/api/provider/test', requireParent(async (req, res) => {
+    const secret = store.getProviderSecret(req.parent.id) || llm.defaultSecret();
+    if (!secret) return res.json({ ok: false, error: 'No AI account connected yet — add your key above and save.' });
+    try {
+      const reply = await llm.complete({
+        ...secret,
+        system: 'You are a connection test. Reply with exactly the two letters: OK',
+        messages: [{ role: 'user', content: 'ping' }],
+        maxTokens: 5,
+      });
+      res.json({ ok: true, provider: secret.provider, model: secret.model, sample: String(reply).slice(0, 40) });
+    } catch (err) {
+      const msg = err.status === 401
+        ? 'The key was rejected (401). Double-check you pasted the full key with no spaces.'
+        : err.status === 429
+          ? 'The provider is rate-limited or out of credit (429). Add credit in your provider console.'
+          : err.isProvider
+            ? `Provider error ${err.status || ''}. Check the key and model.`
+            : 'Could not reach the provider. Check your internet connection.';
+      res.json({ ok: false, error: msg });
+    }
   }));
 
   // ---- Kids ----
