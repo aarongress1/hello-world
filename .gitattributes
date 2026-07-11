@@ -1,0 +1,13 @@
+# Normalize line endings so Windows/Mac/Linux clones don't show phantom
+# "everything modified" diffs. Text files are stored as LF in the repo.
+* text=auto eol=lf
+
+# Windows batch scripts must stay CRLF to run correctly.
+*.bat text eol=crlf
+
+# Binary assets — never convert.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
