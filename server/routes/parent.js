@@ -20,6 +20,7 @@ function kidFields(body) {
     priority_topics: String(body.priority_topics || '').slice(0, 1000),
     homeschool: body.homeschool ? 1 : 0,
     session_minutes: Math.min(90, Math.max(5, Number(body.session_minutes) || 30)),
+    model_tier: ['auto', 'fast', 'balanced', 'capable'].includes(body.model_tier) ? body.model_tier : 'auto',
   };
 }
 

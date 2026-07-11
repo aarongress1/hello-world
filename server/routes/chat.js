@@ -126,7 +126,16 @@ module.exports = function registerChat(app) {
 
     // ---- 2. Provider-side moderation (extra opinion, OpenAI only) ----
     // Prefer the parent's own key (BYO/Pro mode); otherwise use the bundled key.
-    const secret = store.getProviderSecret(req.parent.id) || llm.defaultSecret();
+    const parentSecret = store.getProviderSecret(req.parent.id);
+    const secret = parentSecret || llm.defaultSecret();
+    // Route to a model by tier: an explicit per-child tier always wins; otherwise
+    // "auto" routes bundled traffic by grade (Haiku for K–2) and leaves a BYO
+    // parent on the model they chose.
+    if (secret) {
+      const tier = kid.model_tier || 'auto';
+      if (tier !== 'auto') secret.model = llm.modelForTier(secret.provider, tier) || secret.model;
+      else if (!parentSecret) secret.model = llm.modelForBand(secret.provider, band) || secret.model;
+    }
     if (secret) {
       const mod = await llm.moderate({ provider: secret.provider, apiKey: secret.apiKey, input: text });
       if (mod?.flagged) {

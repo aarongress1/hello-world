@@ -103,6 +103,7 @@ async function saveKid(e) {
     name: el('kName').value, grade: el('kGrade').value, interests: el('kInterests').value, gate_mode: el('kGate').value,
     priority_topics: el('kPriority').value, blocked_topics: el('kBlocked').value,
     session_minutes: el('kMinutes').value, homeschool: el('kHome').value === '1',
+    model_tier: el('kModel').value,
   };
   try {
     if (id) await api('/api/kids/' + id, { method: 'PUT', body });
@@ -118,6 +119,7 @@ function editKid(id) {
   el('kInterests').value = k.interests; el('kGate').value = k.gate_mode;
   el('kPriority').value = k.priority_topics || ''; el('kBlocked').value = k.blocked_topics || '';
   el('kMinutes').value = String(k.session_minutes || 30); el('kHome').value = String(k.homeschool || 0);
+  el('kModel').value = k.model_tier || 'auto';
   el('kidFormTitle').textContent = 'Edit ' + k.name; el('kidCancel').style.display = 'inline-flex';
   el('kName').scrollIntoView({ behavior: 'smooth' });
 }

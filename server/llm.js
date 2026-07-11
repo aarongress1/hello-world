@@ -20,6 +20,23 @@ const KNOWN_MODELS = {
   ],
 };
 
+// Cost/capability tiers → concrete model ids per provider. Used to route each
+// child to an appropriately-priced model (keeps bundled COGS down).
+const TIER_MODELS = {
+  anthropic: { fast: 'claude-haiku-4-5', balanced: 'claude-sonnet-5', capable: 'claude-opus-4-8' },
+  openai: { fast: 'gpt-4o-mini', balanced: 'gpt-4o', capable: 'gpt-4.1' },
+};
+
+function modelForTier(provider, tier) {
+  return TIER_MODELS[provider]?.[tier] || null;
+}
+
+// "auto" routing by developmental band: youngest kids → the fast/cheap model,
+// everyone else → balanced. (Haiku is plenty for K–2 and ~5× cheaper.)
+function modelForBand(provider, band) {
+  return modelForTier(provider, band === 'early' ? 'fast' : 'balanced');
+}
+
 // ---- Chat completion -------------------------------------------------------
 
 // messages: [{ role: 'user'|'assistant', content }]
@@ -165,4 +182,4 @@ const CURRICULUM_PRESETS = {
   },
 };
 
-module.exports = { complete, moderate, demoReply, defaultSecret, KNOWN_MODELS, CURRICULUM_PRESETS, demoMode };
+module.exports = { complete, moderate, demoReply, defaultSecret, modelForTier, modelForBand, KNOWN_MODELS, CURRICULUM_PRESETS, demoMode };

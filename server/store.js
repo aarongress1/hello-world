@@ -70,12 +70,12 @@ function clearProvider(parentId) {
 
 function createKid(parentId, k) {
   const info = db.prepare(
-    `INSERT INTO kids (parent_id, name, grade, interests, gate_mode, blocked_topics, priority_topics, homeschool, session_minutes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO kids (parent_id, name, grade, interests, gate_mode, blocked_topics, priority_topics, homeschool, session_minutes, model_tier)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     parentId, k.name, k.grade, k.interests || '', k.gate_mode || 'every',
     k.blocked_topics || '', k.priority_topics || '', k.homeschool ? 1 : 0,
-    k.session_minutes || 30
+    k.session_minutes || 30, k.model_tier || 'auto'
   );
   return getKid(info.lastInsertRowid);
 }
@@ -83,11 +83,11 @@ function createKid(parentId, k) {
 function updateKid(kidId, k) {
   db.prepare(
     `UPDATE kids SET name=?, grade=?, interests=?, gate_mode=?,
-       blocked_topics=?, priority_topics=?, homeschool=?, session_minutes=? WHERE id=?`
+       blocked_topics=?, priority_topics=?, homeschool=?, session_minutes=?, model_tier=? WHERE id=?`
   ).run(
     k.name, k.grade, k.interests || '', k.gate_mode || 'every',
     k.blocked_topics || '', k.priority_topics || '', k.homeschool ? 1 : 0,
-    k.session_minutes || 30, kidId
+    k.session_minutes || 30, k.model_tier || 'auto', kidId
   );
   return getKid(kidId);
 }

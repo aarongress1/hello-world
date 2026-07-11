@@ -133,6 +133,7 @@ ensureColumn('kids', 'blocked_topics', "blocked_topics TEXT NOT NULL DEFAULT ''"
 ensureColumn('kids', 'priority_topics', "priority_topics TEXT NOT NULL DEFAULT ''");
 ensureColumn('kids', 'homeschool', 'homeschool INTEGER NOT NULL DEFAULT 0');
 ensureColumn('kids', 'session_minutes', 'session_minutes INTEGER NOT NULL DEFAULT 30');
+ensureColumn('kids', 'model_tier', "model_tier TEXT NOT NULL DEFAULT 'auto'"); // auto|fast|balanced|capable
 ensureColumn('sessions', 'focus_session_id', 'focus_session_id INTEGER');
 
 module.exports = db;
