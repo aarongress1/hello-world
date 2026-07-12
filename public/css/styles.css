@@ -79,6 +79,9 @@ section { padding: 44px 0; }
 }
 .card h3 { font-size: 1.15rem; }
 .card .emoji { font-size: 1.9rem; display: block; margin-bottom: .5rem; }
+/* Inline SVG feature icons in a soft brand tile (replaces generic emoji) */
+.card .ficon { width: 48px; height: 48px; border-radius: 14px; background: var(--brand-soft); display: inline-flex; align-items: center; justify-content: center; margin-bottom: .7rem; }
+.card .ficon svg { width: 26px; height: 26px; fill: none; stroke: var(--brand-deep); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .muted { color: var(--ink-soft); }
 .center { text-align: center; }
 
