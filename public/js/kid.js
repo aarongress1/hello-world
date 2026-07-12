@@ -155,10 +155,69 @@ function renderStart() {
     </div>`;
 }
 function pickMinutes(m, btn) { chosenMinutes = m; document.querySelectorAll('.mins button').forEach(b => b.classList.remove('sel')); btn.classList.add('sel'); }
+
+// Friendly in-app replacement for the browser's prompt(). Resolves to the
+// trimmed text, or null if cancelled.
+function askKid(question, placeholder) {
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.className = 'ask-overlay';
+    ov.innerHTML = `<div class="ask-card">
+      <div style="font-size:2.2rem">🦉</div>
+      <h3>${esc(question)}</h3>
+      <input id="askInput" placeholder="${esc(placeholder || '')}" autocomplete="off" />
+      <div class="row">
+        <button class="btn mint" id="askGo">Let's go! →</button>
+        <button class="btn ghost" id="askCancel">Never mind</button>
+      </div>
+    </div>`;
+    document.body.appendChild(ov);
+    const input = ov.querySelector('#askInput');
+    const done = (val) => { ov.remove(); resolve(val); };
+    ov.querySelector('#askGo').onclick = () => done(input.value.trim() || null);
+    ov.querySelector('#askCancel').onclick = () => done(null);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); done(input.value.trim() || null); }
+      if (e.key === 'Escape') done(null);
+    });
+    ov.addEventListener('click', (e) => { if (e.target === ov) done(null); });
+    setTimeout(() => input.focus(), 50);
+  });
+}
+
+// Friendly yes/no (replaces confirm()).
+function askYesNo(question, yesLabel, noLabel) {
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.className = 'ask-overlay';
+    ov.innerHTML = `<div class="ask-card">
+      <div style="font-size:2.2rem">🦉</div>
+      <h3>${esc(question)}</h3>
+      <div class="row">
+        <button class="btn mint" id="ynYes">${esc(yesLabel || 'Yes! 🎉')}</button>
+        <button class="btn ghost" id="ynNo">${esc(noLabel || 'Not yet')}</button>
+      </div>
+    </div>`;
+    document.body.appendChild(ov);
+    const done = (v) => { ov.remove(); resolve(v); };
+    ov.querySelector('#ynYes').onclick = () => done(true);
+    ov.querySelector('#ynNo').onclick = () => done(false);
+    ov.addEventListener('click', (e) => { if (e.target === ov) done(false); });
+  });
+}
+// Brief floating message (replaces alert()).
+function toast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.classList.add('show'), 10);
+  setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 2600);
+}
+
 async function startFree() {
-  const goal = prompt("What do you want to learn or build today?");
-  if (!goal || !goal.trim()) return;
-  await start(null, goal.trim());
+  const goal = await askKid('What do you want to learn or build today?', 'e.g. make slime, build a game, write a song');
+  if (!goal) return;
+  await start(null, goal);
 }
 async function start(objectiveId, goal) {
   try {
@@ -166,7 +225,7 @@ async function start(objectiveId, goal) {
     FOCUS = r.focus; windDownShown = false;
     enterSession([]);
     addBubble('guide', firstPrompt(), false, true);
-  } catch (e) { alert(e.message); }
+  } catch (e) { toast("Hmm, that didn't work — try again. 🌱"); }
 }
 function firstPrompt() {
   const g = FOCUS.goal;
@@ -209,15 +268,15 @@ function pickQuest(id) {
   event.target.classList.toggle('active', activeQuest === id);
 }
 async function newQuest() {
-  const title = prompt('What do you want to explore or build?');
-  if (!title || !title.trim()) return;
+  const title = await askKid('What do you want to explore or build?', 'a new idea…');
+  if (!title) return;
   try {
-    const r = await api('/api/quests', { method: 'POST', body: { title: title.trim() } });
+    const r = await api('/api/quests', { method: 'POST', body: { title } });
     if (r.error) { addBubble('guide', r.error, true); return; }
     QUESTS.unshift(r.quest); activeQuest = r.quest.id; renderQuests();
     if (r.needsApproval) addBubble('guide', `Great idea! I asked your grown-up if we can explore "${r.quest.title}". As soon as they say yes, we'll start! 🌟`, false, true);
     else addBubble('guide', `Yes! Let's explore "${r.quest.title}"! What do you already know about it? 🚀`, false, true);
-  } catch (e) { alert(e.message); }
+  } catch (e) { toast('Hmm, that didn\'t work — try again. 🌱'); }
 }
 
 // ---- Messaging ----
@@ -273,7 +332,7 @@ function showWindDown() {
 async function finishSession() {
   if (timer) clearInterval(timer);
   if (FOCUS && NEXT_OBJ && FOCUS.objective_id === NEXT_OBJ.id) {
-    if (confirm('Did you finish today\'s focus: "' + FOCUS.goal + '"?')) {
+    if (await askYesNo('Did you finish today\'s focus?  "' + FOCUS.goal + '"', 'Yes, I did it! 🎉', 'Not yet')) {
       await api('/api/objectives/' + FOCUS.objective_id + '/status', { method: 'POST', body: { status: 'done' } }).catch(() => {});
     }
   }

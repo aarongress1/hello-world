@@ -60,6 +60,15 @@
     .mins button.sel { border-color:var(--brand); background:var(--brand-soft); color:var(--brand-deep); }
     .winddown { background:#f1fbf7; border:2px solid var(--mint); border-radius:16px; padding:1rem 1.2rem; margin:.6rem 0; align-self:stretch; }
     .winddown h3 { margin:0 0 .3rem; }
+    /* Friendly in-app prompt (replaces the browser's gray dialog) */
+    .ask-overlay { position:fixed; inset:0; background:rgba(31,35,48,.55); display:flex; align-items:center; justify-content:center; padding:20px; z-index:60; }
+    .ask-card { background:#fff; border-radius:22px; max-width:460px; width:100%; padding:24px; box-shadow:var(--shadow); text-align:center; }
+    .ask-card h3 { font-size:1.4rem; margin:.3rem 0 1rem; }
+    .ask-card input { width:100%; border:2px solid var(--brand-soft); border-radius:14px; font-size:1.15rem; padding:.85rem 1rem; }
+    .ask-card .row { display:flex; gap:.6rem; margin-top:1rem; }
+    .ask-card .row .btn { flex:1; }
+    .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); background:var(--ink); color:#fff; padding:.7rem 1.1rem; border-radius:999px; font-weight:800; opacity:0; transition:.3s; z-index:70; }
+    .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
   </style>
 </head>
 <body>
