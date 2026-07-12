@@ -19,7 +19,7 @@ require review by a licensed attorney before use.** These are designed to get yo
 | `PRIVACY_POLICY.md` | Draft v0.1 | COPPA children's privacy notice |
 | `PARENTAL_CONSENT_NOTICE.md` | Draft v0.1 | Direct notice shown before the consent step |
 | `TERMS_OF_SERVICE.md` | Draft v0.1 | Parent-facing terms / EULA |
-| `DATA_MAP.md` | _Not started_ | What we collect, where it flows, retention (next) |
+| `DATA_MAP.md` | Draft v0.1 | Data inventory, flows, sub-processors, retention register |
 
 ## Placeholders to fill (business facts)
 Provide these and I'll drop them into every document:
