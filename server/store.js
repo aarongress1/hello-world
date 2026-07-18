@@ -5,7 +5,15 @@
 // touching routes.
 
 const db = require('./db');
-const { hashPassword, verifyPassword, encrypt, decrypt } = require('./crypto');
+const { hashPassword, verifyPassword, encrypt, decrypt, encryptField, decryptField } = require('./crypto');
+
+// Child transcripts, safety snippets, and digests are PII and must not sit in
+// the DB as cleartext (COPPA; Privacy Policy §9). We envelope-encrypt those
+// fields (encrypt on write, decrypt on read) with the legacy-plaintext-aware
+// helpers in crypto.js — so existing plaintext rows keep reading during the
+// transition without a migration.
+const encField = encryptField;
+const decField = decryptField;
 
 // ---- Parents ---------------------------------------------------------------
 
@@ -33,6 +41,27 @@ function authenticateParent(email, password) {
 
 function setPlan(parentId, plan) {
   db.prepare('UPDATE parents SET plan = ? WHERE id = ?').run(plan, parentId);
+}
+
+function setExitPin(parentId, pin) {
+  db.prepare('UPDATE parents SET exit_pin_hash = ? WHERE id = ?').run(hashPassword(String(pin)), parentId);
+}
+
+function clearExitPin(parentId) {
+  db.prepare('UPDATE parents SET exit_pin_hash = NULL WHERE id = ?').run(parentId);
+}
+
+function hasExitPin(parentId) {
+  const row = getParentById(parentId);
+  return !!(row && row.exit_pin_hash);
+}
+
+// Unlock parent area from the kid screen: dedicated exit PIN if set, else account password.
+function verifyParentExit(parentId, code) {
+  const parent = getParentById(parentId);
+  if (!parent || !code) return false;
+  if (parent.exit_pin_hash) return verifyPassword(String(code), parent.exit_pin_hash);
+  return verifyPassword(String(code), parent.password_hash);
 }
 
 // ---- Provider connection ---------------------------------------------------
@@ -142,22 +171,27 @@ function listPendingQuestsForParent(parentId) {
 
 // ---- Messages --------------------------------------------------------------
 
+function decMessageRow(m) {
+  if (m) m.content = decField(m.content);
+  return m;
+}
+
 function addMessage(kidId, { quest_id, role, content, topic, flagged }) {
   const info = db.prepare(
     'INSERT INTO messages (kid_id, quest_id, role, content, topic, flagged) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(kidId, quest_id || null, role, content, topic || null, flagged ? 1 : 0);
-  return db.prepare('SELECT * FROM messages WHERE id = ?').get(info.lastInsertRowid);
+  ).run(kidId, quest_id || null, role, encField(content), topic || null, flagged ? 1 : 0);
+  return decMessageRow(db.prepare('SELECT * FROM messages WHERE id = ?').get(info.lastInsertRowid));
 }
 
 function listMessages(kidId, questId, limit = 50) {
-  if (questId) {
-    return db.prepare(
-      'SELECT * FROM messages WHERE kid_id = ? AND quest_id = ? ORDER BY created_at ASC LIMIT ?'
-    ).all(kidId, questId, limit);
-  }
-  return db.prepare(
-    'SELECT * FROM messages WHERE kid_id = ? ORDER BY created_at ASC LIMIT ?'
-  ).all(kidId, limit);
+  const rows = questId
+    ? db.prepare(
+        'SELECT * FROM messages WHERE kid_id = ? AND quest_id = ? ORDER BY created_at ASC LIMIT ?'
+      ).all(kidId, questId, limit)
+    : db.prepare(
+        'SELECT * FROM messages WHERE kid_id = ? ORDER BY created_at ASC LIMIT ?'
+      ).all(kidId, limit);
+  return rows.map(decMessageRow);
 }
 
 function recentMessagesForDigest(kidId, sinceIso) {
@@ -166,7 +200,7 @@ function recentMessagesForDigest(kidId, sinceIso) {
      LEFT JOIN quests q ON q.id = m.quest_id
      WHERE m.kid_id = ? AND (? IS NULL OR m.created_at > ?)
      ORDER BY m.created_at ASC`
-  ).all(kidId, sinceIso || null, sinceIso || null);
+  ).all(kidId, sinceIso || null, sinceIso || null).map(decMessageRow);
 }
 
 // ---- Safety events ---------------------------------------------------------
@@ -174,7 +208,7 @@ function recentMessagesForDigest(kidId, sinceIso) {
 function addSafetyEvent(kidId, { severity, category, snippet }) {
   db.prepare(
     'INSERT INTO safety_events (kid_id, severity, category, snippet) VALUES (?, ?, ?, ?)'
-  ).run(kidId, severity, category, snippet.slice(0, 300));
+  ).run(kidId, severity, category, encField(String(snippet).slice(0, 300)));
 }
 
 function listSafetyEvents(parentId, limit = 50) {
@@ -182,7 +216,7 @@ function listSafetyEvents(parentId, limit = 50) {
     `SELECT s.*, k.name AS kid_name FROM safety_events s
      JOIN kids k ON k.id = s.kid_id
      WHERE k.parent_id = ? ORDER BY s.created_at DESC LIMIT ?`
-  ).all(parentId, limit);
+  ).all(parentId, limit).map((s) => { s.snippet = decField(s.snippet); return s; });
 }
 
 // ---- Digests ---------------------------------------------------------------
@@ -190,12 +224,15 @@ function listSafetyEvents(parentId, limit = 50) {
 function addDigest(kidId, { summary, from_time }) {
   const info = db.prepare(
     'INSERT INTO digests (kid_id, summary, from_time) VALUES (?, ?, ?)'
-  ).run(kidId, summary, from_time || null);
-  return db.prepare('SELECT * FROM digests WHERE id = ?').get(info.lastInsertRowid);
+  ).run(kidId, encField(summary), from_time || null);
+  const row = db.prepare('SELECT * FROM digests WHERE id = ?').get(info.lastInsertRowid);
+  if (row) row.summary = decField(row.summary);
+  return row;
 }
 
 function listDigests(kidId, limit = 20) {
-  return db.prepare('SELECT * FROM digests WHERE kid_id = ? ORDER BY created_at DESC LIMIT ?').all(kidId, limit);
+  return db.prepare('SELECT * FROM digests WHERE kid_id = ? ORDER BY created_at DESC LIMIT ?')
+    .all(kidId, limit).map((d) => { d.summary = decField(d.summary); return d; });
 }
 
 function lastDigestTime(kidId) {
@@ -215,11 +252,43 @@ function listPlans(kidId) {
   return db.prepare('SELECT * FROM plans WHERE kid_id = ? ORDER BY created_at DESC').all(kidId);
 }
 
-function addObjective(kidId, { plan_id, subject, title, sort }) {
+function addObjective(kidId, { plan_id, subject, title, sort, resource_url, notes }) {
   const info = db.prepare(
-    'INSERT INTO objectives (kid_id, plan_id, subject, title, sort) VALUES (?, ?, ?, ?, ?)'
-  ).run(kidId, plan_id || null, subject || 'General', title, sort || 0);
+    'INSERT INTO objectives (kid_id, plan_id, subject, title, sort, resource_url, notes) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(
+    kidId,
+    plan_id || null,
+    subject || 'General',
+    title,
+    sort || 0,
+    sanitizeUrl(resource_url),
+    String(notes || '').slice(0, 2000)
+  );
   return db.prepare('SELECT * FROM objectives WHERE id = ?').get(info.lastInsertRowid);
+}
+
+function updateObjective(id, { title, subject, resource_url, notes, sort }) {
+  const cur = getObjective(id);
+  if (!cur) return null;
+  db.prepare(
+    `UPDATE objectives SET title=?, subject=?, resource_url=?, notes=?, sort=? WHERE id=?`
+  ).run(
+    title != null ? String(title).slice(0, 200) : cur.title,
+    subject != null ? String(subject).slice(0, 40) : cur.subject,
+    resource_url !== undefined ? sanitizeUrl(resource_url) : cur.resource_url,
+    notes != null ? String(notes).slice(0, 2000) : (cur.notes || ''),
+    sort != null ? Number(sort) || 0 : cur.sort,
+    id
+  );
+  return getObjective(id);
+}
+
+// Only http(s) practice links — used for IXL / curriculum open-in-browser.
+function sanitizeUrl(u) {
+  if (!u) return null;
+  const s = String(u).trim().slice(0, 500);
+  if (!/^https?:\/\//i.test(s)) return null;
+  return s;
 }
 
 function listObjectives(kidId) {
@@ -252,10 +321,11 @@ function deleteObjective(id) {
 
 // ---- Focus sessions --------------------------------------------------------
 
-function startFocus(kidId, { objective_id, goal, target_minutes }) {
+function startFocus(kidId, { objective_id, goal, target_minutes, kind }) {
+  const sessionKind = objective_id ? 'work' : (kind === 'work' ? 'work' : 'explore');
   const info = db.prepare(
-    'INSERT INTO focus_sessions (kid_id, objective_id, goal, target_minutes, started_at_ms) VALUES (?, ?, ?, ?, ?)'
-  ).run(kidId, objective_id || null, goal, target_minutes || 30, Date.now());
+    'INSERT INTO focus_sessions (kid_id, objective_id, goal, target_minutes, started_at_ms, kind) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(kidId, objective_id || null, goal, target_minutes || 30, Date.now(), sessionKind);
   if (objective_id) setObjectiveStatus(objective_id, 'in_progress');
   return getFocus(info.lastInsertRowid);
 }
@@ -312,13 +382,14 @@ function destroySession(id) {
 
 module.exports = {
   createParent, getParentByEmail, getParentById, authenticateParent, setPlan,
+  setExitPin, clearExitPin, hasExitPin, verifyParentExit,
   setProvider, getProviderMeta, getProviderSecret, clearProvider,
   createKid, updateKid, getKid, listKids, kidBelongsToParent, deleteKid,
   createQuest, getQuest, listQuests, setQuestStatus, listPendingQuestsForParent,
   addMessage, listMessages, recentMessagesForDigest,
   addSafetyEvent, listSafetyEvents,
   addDigest, listDigests, lastDigestTime,
-  createPlan, listPlans, addObjective, listObjectives, getObjective, nextObjective,
+  createPlan, listPlans, addObjective, updateObjective, listObjectives, getObjective, nextObjective,
   setObjectiveStatus, deleteObjective,
   startFocus, getFocus, bumpFocusExchanges, endFocus, recentFocusSessions,
   createSession, getSession, setSessionKid, setSessionFocus, destroySession,

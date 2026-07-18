@@ -17,21 +17,32 @@ async function boot() {
   chosenMinutes = KID.session_minutes || 30;
   el('hello').textContent = `Hi ${KID.name}!`;
   initVoice();
-  if (ctx.activeFocus) { FOCUS = ctx.activeFocus; enterSession(ctx.messages || []); }
+  if (ctx.activeFocus) {
+    FOCUS = ctx.activeFocus;
+    if (FOCUS.objective_id && !FOCUS.objective) attachObjective(FOCUS.objective_id);
+    else if (FOCUS.objective) attachObjective(FOCUS.objective.id);
+    enterSession(ctx.messages || []);
+  }
   else renderStart();
 }
 
 // ---- Voice: Curio speaks its replies, and the kid can talk instead of type.
-// Uses the browser's built-in speech (free, no API cost). Works in Chrome/Edge;
-// speaking works nearly everywhere, listening needs a supporting browser.
+// Listening has two paths: the Web Speech API where it exists (desktop
+// Chrome/Edge over https), else record with MediaRecorder and transcribe on the
+// server (/api/stt) — this is what makes the mic work in the Android app and on
+// tablets. Both need a secure context (https or localhost); plain http can't
+// access the microphone in any browser.
 let voiceOn = localStorage.getItem('curio_voice') !== 'off';
 let recog = null, listening = false;
 let serverTTS = true, curAudio = null; // serverTTS: use natural OpenAI voice until we learn it's unavailable
+let micMode = null; // 'webspeech' | 'recorder' | null (unsupported here)
+let mediaRec = null, recChunks = [], recStream = null, recTimeout = null;
 
 function initVoice() {
   updateVoiceBtn();
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (SR) {
+  if (SR && window.isSecureContext) {
+    micMode = 'webspeech';
     recog = new SR();
     recog.lang = 'en-US'; recog.interimResults = true; recog.continuous = false;
     recog.onresult = (e) => {
@@ -42,9 +53,10 @@ function initVoice() {
     };
     recog.onend = stopMic;
     recog.onerror = (e) => { stopMic(); micError(e && e.error); };
-  } else {
-    const m = el('micBtn'); if (m) m.style.display = 'none'; // no speech input support
+  } else if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder) {
+    micMode = 'recorder'; // no Web Speech API (e.g. Android WebView, Safari) — record + transcribe
   }
+  // No supported path? Keep the 🎤 visible — tapping it explains what to do.
 }
 function toggleVoice() {
   voiceOn = !voiceOn;
@@ -107,54 +119,131 @@ function micError(err) {
   if (err === 'not-allowed' || err === 'service-not-allowed') {
     msg = window.isSecureContext
       ? "I need permission to use the microphone — tap 🎤 again and choose Allow."
-      : "To talk to me, open Curio on this device at http://localhost:3000, or use a secure https link — the microphone is blocked on a plain http Wi-Fi address.";
+      : "To talk to me, ask your grown-up to open Curio with its secure link (the https one, or http://localhost:3000 on this computer) — the microphone is blocked on a plain http Wi-Fi address.";
   } else if (err === 'no-speech') { msg = "I didn't hear anything — tap 🎤 and try again."; }
+  else if (err === 'no-stt') { msg = "My listening ears aren't set up yet — ask your grown-up to add a voice key in the parent dashboard."; }
+  else if (err === 'too-long') { msg = "Whoa, that was a long one! Try saying it in a shorter way. 😊"; }
   else if (err === 'network') { msg = 'Talking needs an internet connection.'; }
   else { msg = "The microphone didn't work here. You can type instead, or try the Chrome browser."; }
   addBubble('guide', '🎤 ' + msg, false, false);
 }
 function toggleMic() {
   if (listening) { stopMic(); return; }
-  if (!recog) { micError('unsupported'); return; }
-  if (!window.isSecureContext) { micError('not-allowed'); return; } // http-over-WiFi blocks the mic
+  if (!micMode) { micError(window.isSecureContext ? 'unsupported' : 'not-allowed'); return; }
   stopAudio(); // so it doesn't hear itself
-  try {
-    recog.start(); listening = true;
-    el('micBtn').classList.add('listening'); el('input').placeholder = 'Listening…';
-  } catch (e) { stopMic(); }
+  if (micMode === 'webspeech') {
+    try {
+      recog.start(); listening = true;
+      el('micBtn').classList.add('listening'); el('input').placeholder = 'Listening…';
+    } catch (e) { stopMic(); }
+  } else {
+    startRecording();
+  }
 }
 function stopMic() {
   listening = false;
   const m = el('micBtn'); if (m) m.classList.remove('listening');
   el('input').placeholder = 'Type or tap 🎤 to talk…';
+  if (recTimeout) { clearTimeout(recTimeout); recTimeout = null; }
   try { if (recog) recog.stop(); } catch (e) {}
+  if (mediaRec && mediaRec.state !== 'inactive') { try { mediaRec.stop(); } catch (e) {} } // → onRecStop
 }
 
-// ---- Start screen: choose today's focus, intentionally ----
+// ---- Recorder path: capture audio, transcribe on the server, discard. ----
+async function startRecording() {
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (e) { micError('not-allowed'); return; }
+  recStream = stream;
+  const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
+    .find((t) => window.MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || '';
+  recChunks = [];
+  try { mediaRec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream); }
+  catch (e) { recStream.getTracks().forEach((t) => t.stop()); recStream = null; micError('unsupported'); return; }
+  mediaRec.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
+  mediaRec.onstop = onRecStop;
+  mediaRec.start();
+  listening = true;
+  el('micBtn').classList.add('listening');
+  el('input').placeholder = "Listening… tap 🎤 when you're done";
+  recTimeout = setTimeout(stopMic, 45000); // keep clips small enough to upload
+}
+async function onRecStop() {
+  if (recStream) { recStream.getTracks().forEach((t) => t.stop()); recStream = null; }
+  const type = (mediaRec && mediaRec.mimeType) || 'audio/webm';
+  mediaRec = null;
+  const blob = new Blob(recChunks, { type });
+  recChunks = [];
+  if (blob.size < 1500) return; // an accidental tap — nothing worth sending
+  if (blob.size > 600000) { micError('too-long'); return; }
+  const input = el('input');
+  input.placeholder = '🦉 Curio is listening…';
+  try {
+    const audio = await blobToBase64(blob);
+    const res = await fetch('/api/stt', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ audio, mime: type }),
+    });
+    if (res.status === 402) { micError('no-stt'); return; }
+    const data = await res.json().catch(() => ({}));
+    const text = String(data.text || '').trim();
+    if (!text) { micError(data.error === 'stt-failed' ? 'network' : 'no-speech'); return; }
+    input.value = text;
+    send();
+  } catch (e) {
+    micError('network');
+  } finally {
+    input.placeholder = 'Type or tap 🎤 to talk…';
+  }
+}
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1] || '');
+    r.onerror = () => reject(new Error('read failed'));
+    r.readAsDataURL(blob);
+  });
+}
+
+// ---- Start screen: companion-first (zero setup) ----
 function renderStart() {
   el('composer').style.display = 'none';
   el('focus').classList.remove('on');
   el('quests').style.display = 'none';
+  hideLesson();
+  const hs = !!KID.homeschool;
   const mins = [15, 20, 30, 45].map(m => `<button class="${m === chosenMinutes ? 'sel' : ''}" onclick="pickMinutes(${m},this)">${m} min</button>`).join('');
-  const objCard = NEXT_OBJ
-    ? `<div class="obj">🎯 Today's focus: ${esc(NEXT_OBJ.title)}<div class="muted" style="font-weight:700;font-size:.85rem;margin-top:.2rem;">${esc(NEXT_OBJ.subject)}</div></div>`
-    : `<div class="obj">✨ Pick something you're curious about and let's go deep on it.</div>`;
+  const subjects = ['Math', 'Reading', 'Writing', 'Science', 'Something else'];
+  const chips = subjects.map((s) =>
+    `<button type="button" class="qchip" onclick="startCompanion(${JSON.stringify(s)})">${esc(s)}</button>`
+  ).join('');
+  const planBtn = NEXT_OBJ
+    ? `<button class="btn ghost" style="width:100%;margin-top:.5rem;" onclick="start(${NEXT_OBJ.id})">Today's plan: ${esc(NEXT_OBJ.title)} →</button>`
+    : '';
   el('chat').innerHTML = `
     <div class="start">
       <div style="font-size:3rem">🦉</div>
       <h2>Ready to learn, ${esc(KID.name)}?</h2>
-      <p class="muted">Let's do one focused thing today — then go make it real.</p>
+      <p class="muted">${hs ? 'Bring your schoolwork — Curio coaches right beside it.' : "Let's do one focused thing today — then go make it real."}</p>
       <div class="card">
-        ${objCard}
-        <label style="font-weight:800;">How long today?</label>
+        <button class="btn mint" style="width:100%;" onclick="el('companionChips').style.display='flex'">What are you working on? →</button>
+        <div id="companionChips" class="quests" style="display:none;margin-top:.7rem;flex-wrap:wrap;justify-content:center;">${chips}</div>
+        <label style="font-weight:800;margin-top:.8rem;display:block;">How long today?</label>
         <div class="mins">${mins}</div>
-        ${NEXT_OBJ ? `<button class="btn mint" style="width:100%;margin-top:.5rem;" onclick="start(${NEXT_OBJ.id})">Start today's focus →</button>` : ''}
-        <button class="btn ${NEXT_OBJ ? 'ghost' : ''}" style="width:100%;margin-top:.5rem;" onclick="startFree()">${NEXT_OBJ ? 'Explore something else' : 'Start exploring →'}</button>
+        ${planBtn}
+        <button class="btn ghost" style="width:100%;margin-top:.5rem;font-size:.9rem;" onclick="startFree()">Just exploring today →</button>
       </div>
       <p class="muted" style="font-size:.85rem;">🌿 We'll find a good stopping point together when time's up.</p>
     </div>`;
 }
 function pickMinutes(m, btn) { chosenMinutes = m; document.querySelectorAll('.mins button').forEach(b => b.classList.remove('sel')); btn.classList.add('sel'); }
+
+async function startCompanion(subject) {
+  const detail = await askKid('What are you working on right now?', 'e.g. multiplication worksheet, page 12');
+  if (!detail) return;
+  await start(null, `${subject}: ${detail}`, 'work');
+}
 
 // Friendly in-app replacement for the browser's prompt(). Resolves to the
 // trimmed text, or null if cancelled.
@@ -217,19 +306,48 @@ function toast(msg) {
 async function startFree() {
   const goal = await askKid('What do you want to learn or build today?', 'e.g. make slime, build a game, write a song');
   if (!goal) return;
-  await start(null, goal);
+  await start(null, goal, 'explore');
 }
-async function start(objectiveId, goal) {
+async function start(objectiveId, goal, kind) {
   try {
-    const r = await api('/api/focus/start', { method: 'POST', body: { objectiveId, goal, targetMinutes: chosenMinutes } });
+    const r = await api('/api/focus/start', {
+      method: 'POST',
+      body: { objectiveId, goal, targetMinutes: chosenMinutes, kind: kind || (objectiveId ? 'work' : 'explore') },
+    });
     FOCUS = r.focus; windDownShown = false;
+    // Always attach the full objective from local list (URL/notes) so the lesson board shows.
+    attachObjective(objectiveId || (FOCUS && FOCUS.objective_id));
     enterSession([]);
     addBubble('guide', firstPrompt(), false, true);
   } catch (e) { toast("Hmm, that didn't work — try again. 🌱"); }
 }
+
+function attachObjective(objectiveId) {
+  if (!FOCUS) return;
+  const id = Number(objectiveId || FOCUS.objective_id || (FOCUS.objective && FOCUS.objective.id));
+  if (!id) return;
+  const fromList = OBJECTIVES.find(o => o.id === id) || (NEXT_OBJ && NEXT_OBJ.id === id ? NEXT_OBJ : null);
+  const fromApi = FOCUS.objective || null;
+  FOCUS.objective = {
+    id,
+    title: (fromApi && fromApi.title) || (fromList && fromList.title) || FOCUS.goal,
+    subject: (fromApi && fromApi.subject) || (fromList && fromList.subject) || 'Skill',
+    notes: (fromApi && fromApi.notes) || (fromList && fromList.notes) || '',
+    resource_url: (fromApi && fromApi.resource_url) || (fromList && fromList.resource_url) || null,
+  };
+  FOCUS.objective_id = id;
+}
+
 function firstPrompt() {
   const g = FOCUS.goal;
-  return `Awesome, ${KID.name}! Today we're focusing on "${g}" for about ${FOCUS.target_minutes} minutes. 🌱 Let's start from the very beginning — what do you already know about it?`;
+  const obj = FOCUS.objective;
+  if (FOCUS.kind === 'work' && !obj) {
+    return `Okay ${KID.name} — grab your worksheet or page. Read me the problem you're on, or type it in exactly how it looks. 🦉`;
+  }
+  if (obj) {
+    return `Awesome, ${KID.name}! Today's skill is "${obj.title}"${obj.subject ? ` (${obj.subject})` : ''}. 🔬 We'll learn HOW it works, you'll try practice${obj.resource_url ? ' in the lesson panel' : ''}, and then you'll show me you get it — with a tiny real-world make or by teaching it back. What do you already know about this?`;
+  }
+  return `Awesome, ${KID.name}! Today we're going deep on "${g}" for about ${FOCUS.target_minutes} minutes — like little scientists. 🔬 First: what's one thing you've noticed about it in real life? Then we'll figure out WHY it works that way, and you'll make a tiny thing (draw, build, or try an experiment) before we're done.`;
 }
 
 // ---- In-session ----
@@ -240,10 +358,51 @@ function enterSession(messages) {
   renderQuests();
   el('chat').innerHTML = '';
   if (messages.length) messages.forEach(m => addBubble(m.role, m.content, m.flagged));
+  if (FOCUS && FOCUS.objective_id && !FOCUS.objective) attachObjective(FOCUS.objective_id);
+  showLesson(FOCUS && FOCUS.objective);
   updateFocusHeader();
   if (timer) clearInterval(timer);
   timer = setInterval(updateFocusHeader, 20000);
   scrollDown();
+}
+
+function showLesson(obj) {
+  const board = el('lessonBoard');
+  const stage = el('stage');
+  const wrap = el('kidWrap');
+  if (!board || !obj) { hideLesson(); return; }
+  el('lessonSubject').textContent = obj.subject || 'Skill';
+  el('lessonTitle').textContent = obj.title || FOCUS.goal;
+  el('lessonNotes').textContent = obj.notes || '';
+  el('lessonNotes').style.display = obj.notes ? 'block' : 'none';
+  const btn = el('openPractice');
+  // Always show a practice button for objective sessions — specific skill URL if set,
+  // otherwise IXL home so the kid still has a split-screen "practice" affordance.
+  btn.style.display = '';
+  if (obj.resource_url && /ixl\.com/i.test(obj.resource_url)) btn.textContent = 'Open in IXL →';
+  else if (obj.resource_url) btn.textContent = 'Open practice →';
+  else btn.textContent = 'Open IXL →';
+  board.classList.add('on');
+  stage.classList.add('split');
+  wrap.classList.add('wide');
+}
+function hideLesson() {
+  const board = el('lessonBoard'); if (board) board.classList.remove('on');
+  const stage = el('stage'); if (stage) stage.classList.remove('split');
+  const wrap = el('kidWrap'); if (wrap) wrap.classList.remove('wide');
+}
+function openPractice() {
+  const url = (FOCUS && FOCUS.objective && FOCUS.objective.resource_url) || 'https://www.ixl.com/';
+  if (!(FOCUS && FOCUS.objective && FOCUS.objective.resource_url)) {
+    toast('No skill link yet — opening IXL. Parent can paste a skill URL under Learning plans → Edit.');
+  }
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+function practicedTurn() {
+  const input = el('input');
+  if (!input || el('sendBtn').disabled) return;
+  input.value = 'I did a practice round — can I show you a tricky one?';
+  send();
 }
 function elapsedMin() { return FOCUS ? Math.floor((Date.now() - FOCUS.started_at_ms) / 60000) : 0; }
 function updateFocusHeader() {
@@ -321,7 +480,7 @@ function showWindDown() {
   const card = document.createElement('div');
   card.className = 'winddown';
   card.innerHTML = `<h3>🌿 Great stopping point!</h3>
-    <p>You did real thinking today, ${esc(KID.name)}. The best next step is <strong>off the screen</strong> — go build, draw, or try a piece of "${esc(FOCUS.goal)}" in the real world.</p>
+    <p>You did real thinking today, ${esc(KID.name)}. The best next step is <strong>off the screen</strong> — finish one tiny make about "${esc(FOCUS.goal)}" (draw it, build a model, or try a quick experiment) and show a grown-up what you figured out.</p>
     <div class="row" style="margin-top:.5rem;">
       <button class="btn mint" onclick="finishSession()">I'm all done! 🎉</button>
       <button class="btn ghost small" onclick="this.closest('.winddown').remove()">A couple more minutes</button>
@@ -338,6 +497,7 @@ async function finishSession() {
   }
   await api('/api/focus/end', { method: 'POST', body: { reason: 'kid-done' } }).catch(() => {});
   el('focus').classList.remove('on'); el('composer').style.display = 'none'; el('quests').style.display = 'none';
+  hideLesson();
   el('chat').innerHTML = `<div class="start"><div style="font-size:3rem">🎉</div><h2>See you next time, ${esc(KID.name)}!</h2>
     <p class="muted">Go make something awesome. 🌳</p>
     <button class="btn" onclick="location.reload()">Start another focus</button></div>`;
@@ -345,9 +505,46 @@ async function finishSession() {
 }
 
 async function exitKid() {
+  const code = await askParentExit();
+  if (!code) return;
+  try {
+    await api('/api/verify-exit', { method: 'POST', body: { code } });
+  } catch (e) {
+    toast(e.message || 'That code did not match.');
+    return;
+  }
   if (FOCUS) await api('/api/focus/end', { method: 'POST', body: { reason: 'exit' } }).catch(() => {});
   await api('/api/select-kid', { method: 'POST', body: { kidId: null } }).catch(() => {});
   window.location.href = '/parent.html';
+}
+
+// Password-style prompt for the parent exit gate (not spoken aloud by TTS).
+function askParentExit() {
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.className = 'ask-overlay';
+    ov.innerHTML = `<div class="ask-card">
+      <div style="font-size:2.2rem">🔒</div>
+      <h3>Parent area</h3>
+      <p class="muted" style="margin:0 0 .6rem;">Enter your exit PIN or account password.</p>
+      <input id="askInput" type="password" inputmode="numeric" autocomplete="off" placeholder="••••" />
+      <div class="row">
+        <button class="btn mint" id="askGo">Unlock</button>
+        <button class="btn ghost" id="askCancel">Cancel</button>
+      </div>
+    </div>`;
+    document.body.appendChild(ov);
+    const input = ov.querySelector('#askInput');
+    const done = (val) => { ov.remove(); resolve(val); };
+    ov.querySelector('#askGo').onclick = () => done(input.value.trim() || null);
+    ov.querySelector('#askCancel').onclick = () => done(null);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); done(input.value.trim() || null); }
+      if (e.key === 'Escape') done(null);
+    });
+    ov.addEventListener('click', (e) => { if (e.target === ov) done(null); });
+    setTimeout(() => input.focus(), 50);
+  });
 }
 
 boot();

@@ -8,7 +8,7 @@ async function boot() {
   el('curPlan').textContent = ME.plan;
   try { MODELS = (await api('/api/providers/models')).models; } catch {}
   fillModels();
-  await Promise.all([loadKids(), loadPending(), loadProvider(), loadSafety()]);
+  await Promise.all([loadKids(), loadPending(), loadProvider(), loadSafety(), refreshExitPinStatus()]);
   refreshStatus();
 }
 
@@ -60,6 +60,45 @@ function showPanel(name) {
   if (name === 'safety') loadSafety();
   if (name === 'activity') loadActivity();
   if (name === 'plans') loadPlans();
+  if (name === 'security') refreshExitPinStatus();
+}
+
+async function refreshExitPinStatus() {
+  const s = el('exitPinStatus'); if (!s) return;
+  let me; try { me = await api('/api/me'); } catch { return; }
+  s.textContent = me.hasExitPin
+    ? '✅ Exit PIN is set. Parent area on the kid screen requires it.'
+    : '⚠️ No exit PIN yet — Parent area will ask for your account password instead.';
+}
+
+async function saveExitPin(e) {
+  e.preventDefault();
+  const msg = el('exitPinMsg'); msg.className = 'form-msg';
+  const a = el('exitPin').value.trim();
+  const b = el('exitPin2').value.trim();
+  if (a !== b) { msg.className = 'form-msg error'; msg.textContent = 'PINs do not match.'; return false; }
+  try {
+    await api('/api/exit-pin', { method: 'POST', body: { pin: a } });
+    el('exitPin').value = ''; el('exitPin2').value = '';
+    msg.className = 'form-msg ok'; msg.textContent = 'Exit PIN saved.';
+    refreshExitPinStatus();
+  } catch (err) {
+    msg.className = 'form-msg error'; msg.textContent = err.message || 'Could not save PIN.';
+  }
+  return false;
+}
+
+async function clearExitPin() {
+  if (!confirm('Clear the exit PIN? Parent area will fall back to your account password.')) return;
+  try {
+    await api('/api/exit-pin', { method: 'DELETE' });
+    el('exitPinMsg').className = 'form-msg ok';
+    el('exitPinMsg').textContent = 'Exit PIN cleared.';
+    refreshExitPinStatus();
+  } catch (err) {
+    el('exitPinMsg').className = 'form-msg error';
+    el('exitPinMsg').textContent = err.message || 'Could not clear PIN.';
+  }
 }
 
 async function logout() { await api('/api/logout', { method: 'POST' }); window.location.href = '/'; }
@@ -209,13 +248,15 @@ async function loadPlans() {
   const objs = data.objectives;
   const done = objs.filter(o => o.status === 'done').length;
   const list = objs.length ? objs.map(o => `
-    <div class="ev">
+    <div class="ev" id="obj-row-${o.id}">
       <span class="dot ${o.status === 'done' ? 'info' : o.status === 'in_progress' ? 'warn' : ''}"></span>
-      <div style="flex:1;">
+      <div style="flex:1;" id="obj-view-${o.id}">
         <strong>${esc(o.title)}</strong>
-        <div class="muted" style="font-size:.85rem;">${esc(o.subject)} · ${o.status === 'done' ? '✅ done' : o.status === 'in_progress' ? '⏳ in progress' : '⬜ to do'}</div>
+        <div class="muted" style="font-size:.85rem;">${esc(o.subject)} · ${o.status === 'done' ? '✅ done' : o.status === 'in_progress' ? '⏳ in progress' : '⬜ to do'}${o.resource_url ? ' · 🔗 practice link' : ''}</div>
+        ${o.notes ? `<div class="muted" style="font-size:.82rem;margin-top:.15rem;">${esc(o.notes)}</div>` : ''}
       </div>
-      <div class="row">
+      <div class="row" id="obj-actions-${o.id}">
+        <button class="btn ghost small" onclick="editObj(${o.id})">Edit</button>
         ${o.status !== 'done' ? `<button class="btn mint small" onclick="objStatus(${o.id},'done')">Mark done</button>` : `<button class="btn ghost small" onclick="objStatus(${o.id},'todo')">Reopen</button>`}
         <button class="btn danger small" onclick="objDelete(${o.id})">✕</button>
       </div>
@@ -232,27 +273,71 @@ async function loadPlans() {
     <div class="card" style="margin-top:1rem;">
       <h3>Add objectives</h3>
       <label>Quick add one</label>
-      <div class="row"><input id="objTitle" placeholder="e.g. Practice multiplication tables 2–5" style="flex:1;" /><button class="btn" onclick="objAdd(${kidId})">Add</button></div>
+      <div class="row"><input id="objTitle" placeholder="e.g. Add and subtract within 20 (IXL skill name)" style="flex:1;" /><button class="btn" onclick="objAdd(${kidId})">Add</button></div>
+      <label>Practice link <span class="muted" style="font-weight:400;">(optional IXL / curriculum URL — opens beside Curio)</span></label>
+      <input id="objUrl" placeholder="https://www.ixl.com/..." />
+      <label>Parent notes <span class="muted" style="font-weight:400;">(optional — shown on the kid lesson board)</span></label>
+      <input id="objNotes" placeholder="Finish the starred problems; then build a real-world example" />
       <label style="margin-top:1rem;">Import a starter plan</label>
       <div class="row">
         <select id="presetSel" style="flex:1;">${PRESETS.map(p => `<option value="${p.id}">${esc(p.title)} (${p.count})</option>`).join('')}</select>
         <button class="btn ghost" onclick="importPreset(${kidId})">Import preset</button>
       </div>
-      <label style="margin-top:1rem;">Or import from your curriculum <span class="muted" style="font-weight:400;">(Time4Learning, IXL, Abeka, a co-op outline, a CSV export…)</span></label>
-      <textarea id="importText" rows="5" placeholder="Paste your scope & sequence or skill list. It understands most formats:&#10;Math: Add fractions with like denominators&#10;1. Read chapter 3 and summarize&#10;Science:&#10;   Build a simple circuit"></textarea>
+      <label style="margin-top:1rem;">Or paste from IXL / your curriculum <span class="muted" style="font-weight:400;">(names + links — no public API)</span></label>
+      <textarea id="importText" rows="5" placeholder="Paste skills with optional links. Examples:&#10;Math: Multiply by 2 — https://www.ixl.com/math/grade-3/multiply-by-2&#10;Multiply by 5 | https://www.ixl.com/math/grade-3/multiply-by-5&#10;https://www.ixl.com/math/grade-3/multiplication-facts-up-to-10&#10;Language arts:&#10;   Identify the main idea&#10;   https://www.ixl.com/ela/grade-3/determine-the-main-idea"></textarea>
       <div class="row" style="margin-top:.5rem;align-items:center;">
         <label class="btn ghost small" style="margin:0;cursor:pointer;">📄 Upload .txt / .csv<input type="file" accept=".txt,.csv,text/plain,text/csv" hidden onchange="loadImportFile(event)"></label>
         <button class="btn" onclick="previewImport(${kidId})">Preview import →</button>
       </div>
       <div id="importPreview" style="margin-top:.8rem;"></div>
-      <p class="muted" style="font-size:.82rem;margin-top:.6rem;">Have a PDF? Open it, select the text, copy, and paste above. Most curricula have no public API, so paste/upload is the universal path — this understands lists, "Subject: item", CSV, and unit headers.</p>
+      <p class="muted" style="font-size:.82rem;margin-top:.6rem;"><strong>IXL tip:</strong> paste <em>Skill name — https://www.ixl.com/…</em> on one line, or a skill name then its URL on the next line. Bare IXL links auto-title from the slug. Curio coaches the concept; IXL stays the drill site in the split view.</p>
     </div>`;
+}
+
+async function editObj(id) {
+  const kidId = el('planKid').value;
+  const data = await api('/api/kids/' + kidId + '/objectives');
+  const o = data.objectives.find(x => x.id === id);
+  if (!o) return;
+  const view = el('obj-view-' + id);
+  const actions = el('obj-actions-' + id);
+  if (!view || !actions) return;
+  view.innerHTML = `
+    <label style="margin:0;">Title</label>
+    <input id="editTitle-${id}" value="${esc(o.title)}" />
+    <label>Subject</label>
+    <input id="editSubject-${id}" value="${esc(o.subject || 'General')}" />
+    <label>Practice link</label>
+    <input id="editUrl-${id}" value="${esc(o.resource_url || '')}" placeholder="https://www.ixl.com/..." />
+    <label>Parent notes</label>
+    <input id="editNotes-${id}" value="${esc(o.notes || '')}" placeholder="Optional" />
+  `;
+  actions.innerHTML = `
+    <button class="btn mint small" onclick="saveObj(${id})">Save</button>
+    <button class="btn ghost small" onclick="loadPlans()">Cancel</button>
+  `;
+}
+async function saveObj(id) {
+  const title = el('editTitle-' + id).value.trim();
+  const subject = el('editSubject-' + id).value.trim();
+  const resource_url = el('editUrl-' + id).value.trim();
+  const notes = el('editNotes-' + id).value.trim();
+  if (!title) { alert('Title is required.'); return; }
+  try {
+    await api('/api/objectives/' + id, { method: 'POST', body: { title, subject, resource_url, notes } });
+    loadPlans();
+  } catch (e) { alert(e.message || 'Could not save.'); }
 }
 async function objStatus(id, status) { await api('/api/objectives/' + id + '/status', { method: 'POST', body: { status } }); loadPlans(); }
 async function objDelete(id) { if (!confirm('Delete this objective?')) return; await api('/api/objectives/' + id, { method: 'DELETE' }); loadPlans(); }
 async function objAdd(kidId) {
   const t = el('objTitle').value.trim(); if (!t) return;
-  await api('/api/kids/' + kidId + '/objectives', { method: 'POST', body: { title: t } }); loadPlans();
+  await api('/api/kids/' + kidId + '/objectives', {
+    method: 'POST',
+    body: { title: t, resource_url: el('objUrl').value.trim(), notes: el('objNotes').value.trim() },
+  });
+  el('objTitle').value = ''; el('objUrl').value = ''; el('objNotes').value = '';
+  loadPlans();
 }
 async function importPreset(kidId) {
   await api('/api/kids/' + kidId + '/objectives/import', { method: 'POST', body: { preset: el('presetSel').value } }); loadPlans();
@@ -276,10 +361,14 @@ async function previewImport(kidId) {
 function renderPreview(kidId, rows) {
   const box = el('importPreview');
   if (!rows.length) { box.innerHTML = '<p class="muted">Couldn\'t find any objectives — check the text and try again.</p>'; return; }
+  const hostChip = (url) => {
+    try { return `🔗 ${esc(new URL(url).hostname.replace(/^www\./, ''))}`; }
+    catch { return '🔗 link'; }
+  };
   box.innerHTML = `<div class="card" style="background:var(--brand-soft);border:0;">
     <strong>Found ${rows.length} objective${rows.length > 1 ? 's' : ''}</strong> — review, then import:
     <div style="max-height:220px;overflow:auto;margin:.5rem 0;">
-      ${rows.map(r => `<div style="padding:.25rem 0;font-size:.9rem;"><span class="badge-mode">${esc(r.subject)}</span> ${esc(r.title)}</div>`).join('')}
+      ${rows.map(r => `<div style="padding:.25rem 0;font-size:.9rem;"><span class="badge-mode">${esc(r.subject)}</span> ${esc(r.title)}${r.resource_url ? ` <span class="muted">${hostChip(r.resource_url)}</span>` : ''}</div>`).join('')}
     </div>
     <div class="row"><button class="btn mint" onclick="confirmImport(${kidId})">✓ Import these ${rows.length}</button>
     <button class="btn ghost" onclick="PARSED_ROWS=null;el('importPreview').innerHTML='';">Cancel</button></div>

@@ -44,6 +44,7 @@ module.exports = function registerAuth(app) {
       aiConnected: !!provider || !!llm.defaultSecret(),
       bundled: !provider && !!llm.defaultSecret(),
       selectedKidId: ctx.session.kid_id || null,
+      hasExitPin: store.hasExitPin(ctx.parent.id),
     });
   });
 
@@ -53,6 +54,31 @@ module.exports = function registerAuth(app) {
     if (!['explorer', 'plus', 'max'].includes(plan)) return res.json({ error: 'Unknown plan.' }, 400);
     store.setPlan(req.parent.id, plan);
     res.json({ ok: true, plan });
+  }));
+
+  // Set / change the kid-screen parent-area exit PIN (4–8 digits).
+  app.post('/api/exit-pin', requireParent(async (req, res) => {
+    const pin = String(req.body?.pin || '').trim();
+    if (!/^\d{4,8}$/.test(pin)) {
+      return res.json({ error: 'Exit PIN must be 4–8 digits.' }, 400);
+    }
+    store.setExitPin(req.parent.id, pin);
+    res.json({ ok: true, hasExitPin: true });
+  }));
+
+  app.del('/api/exit-pin', requireParent(async (req, res) => {
+    store.clearExitPin(req.parent.id);
+    res.json({ ok: true, hasExitPin: false });
+  }));
+
+  // Unlock "Parent area" from the kid screen. Accepts exit PIN (if set) or account password.
+  // Allowed while a kid is selected — this is the escape hatch off the kid UI.
+  app.post('/api/verify-exit', requireParent(async (req, res) => {
+    const code = String(req.body?.code || '');
+    if (!store.verifyParentExit(req.parent.id, code)) {
+      return res.json({ error: 'That code did not match. Try again.' }, 401);
+    }
+    res.json({ ok: true });
   }));
 };
 

@@ -48,6 +48,7 @@
         <button data-panel="activity" onclick="showPanel('activity')">📝 Activity</button>
         <button data-panel="safety" onclick="showPanel('safety')">🛡️ Safety</button>
         <button data-panel="provider" onclick="showPanel('provider')">🔌 AI account</button>
+        <button data-panel="security" onclick="showPanel('security')">🔒 Security</button>
         <button data-panel="plan" onclick="showPanel('plan')">⭐ Plan</button>
       </aside>
 
@@ -129,8 +130,8 @@
 
         <!-- LEARNING PLANS -->
         <section class="panel" id="panel-plans">
-          <h2>Learning plans <span class="muted" style="font-size:1rem;">(self-guided tutor)</span></h2>
-          <p class="muted">Give Curio a backbone of objectives — from a homeschool curriculum, your own list, or a starter template. Curio guides your child through them as a self-directed tutor, tracks progress, and produces a printable record.</p>
+          <h2>Learning plans <span class="muted" style="font-size:1rem;">(optional)</span></h2>
+          <p class="muted">Optional. Give Curio a backbone of objectives — paste IXL skill names (or any curriculum), attach practice links, and Curio coaches beside the drill site. Progress + printable record included.</p>
           <label for="planKid">Child</label>
           <select id="planKid" onchange="loadPlans()" style="max-width:280px;"></select>
           <div id="plansBody" style="margin-top:1rem;"></div>
@@ -178,6 +179,27 @@
               </div>
             </form>
             <p class="muted" style="font-size:.82rem;margin-top:.8rem;">Until a key is connected, Curio runs in demo mode (friendly canned replies) so you can explore the flow.</p>
+          </div>
+        </section>
+
+        <!-- SECURITY -->
+        <section class="panel" id="panel-security">
+          <h2>Device lock</h2>
+          <p class="muted">When a child is in a session, <strong>Parent area</strong> stays locked until you enter this PIN (or your account password). Set a short PIN so you don’t have to type your password on a tablet.</p>
+          <div class="card" style="margin-top:1rem;max-width:420px;">
+            <p id="exitPinStatus" class="muted" style="margin-top:0;"></p>
+            <form id="exitPinForm" onsubmit="return saveExitPin(event)">
+              <label for="exitPin">Exit PIN <span class="muted" style="font-weight:400;">(4–8 digits)</span></label>
+              <input id="exitPin" type="password" inputmode="numeric" pattern="[0-9]{4,8}" maxlength="8" placeholder="••••" autocomplete="new-password" required />
+              <label for="exitPin2">Confirm PIN</label>
+              <input id="exitPin2" type="password" inputmode="numeric" pattern="[0-9]{4,8}" maxlength="8" placeholder="••••" autocomplete="new-password" required />
+              <div class="form-msg" id="exitPinMsg"></div>
+              <div class="row" style="margin-top:.6rem;">
+                <button class="btn" type="submit">Save exit PIN</button>
+                <button class="btn ghost" type="button" onclick="clearExitPin()">Clear PIN</button>
+              </div>
+            </form>
+            <p class="muted" style="font-size:.82rem;margin-top:.8rem;">If no PIN is set, Parent area still asks for your <strong>account password</strong>.</p>
           </div>
         </section>
 

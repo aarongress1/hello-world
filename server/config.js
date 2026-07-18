@@ -36,21 +36,53 @@ const config = {
     model: process.env.CURIO_AI_MODEL || null,        // optional; defaults per provider
   },
 
-  // Natural text-to-speech (OpenAI voices). Falls back to the browser's built-in
-  // voice if no key is available. Needs an OpenAI key: CURIO_TTS_KEY, or a
-  // connected OpenAI provider (bundled or a parent's BYO key).
+  // Natural voice (OpenAI). TTS speaks Curio's replies; STT transcribes the
+  // kid's mic audio (transcribe-and-discard — audio is never stored). Both need
+  // an OpenAI key: CURIO_TTS_KEY, or a connected OpenAI provider (bundled or a
+  // parent's BYO key). Falls back to the browser's built-in voice otherwise.
+  // Pilot decision 2026-07-12: Curio pays for voice via CURIO_TTS_KEY.
   tts: {
     key: process.env.CURIO_TTS_KEY || null,
     voice: process.env.CURIO_TTS_VOICE || 'nova',     // nova | fable | shimmer | alloy | echo | onyx
-    model: process.env.CURIO_TTS_MODEL || 'tts-1',    // or 'gpt-4o-mini-tts'
+    model: process.env.CURIO_TTS_MODEL || 'gpt-4o-mini-tts', // steerable + natural ('tts-1' also works)
+    // Style steering for gpt-4o-mini-tts (ignored on tts-1).
+    instructions: process.env.CURIO_TTS_STYLE ||
+      'Speak like a warm, playful learning guide talking with a young child: clear, gentle, upbeat but calm, natural pacing, never rushed or theatrical.',
+  },
+  stt: {
+    model: process.env.CURIO_STT_MODEL || 'gpt-4o-mini-transcribe', // mic transcription
   },
 };
 
-if (config.appSecret === 'dev-insecure-secret-change-me') {
+const INSECURE_DEFAULT_SECRET = 'dev-insecure-secret-change-me';
+
+// The app secret both signs session cookies AND derives the AES key that
+// encrypts stored provider keys and child data. A KNOWN default means forgeable
+// sessions and decryptable data — so we FAIL CLOSED (refuse to boot) whenever
+// the default is in use in a real context (production, or non-demo mode where
+// real provider keys/child data are handled). Local demo keeps only a warning.
+// Deliberate local override: ALLOW_INSECURE_SECRET=true.
+function assertSecretSafe(cfg = config, env = process.env) {
+  if (cfg.appSecret !== INSECURE_DEFAULT_SECRET) return;
+  const isProduction = String(env.NODE_ENV || '').toLowerCase() === 'production';
+  const allowInsecure = String(env.ALLOW_INSECURE_SECRET || '').toLowerCase() === 'true';
+  const unsafeContext = isProduction || !cfg.demoMode;
+  if (unsafeContext && !allowInsecure) {
+    throw new Error(
+      '[curio] FATAL: APP_SECRET is unset (using the insecure dev default) in a ' +
+      'production/non-demo context. Generate a strong secret (e.g. `openssl rand -hex 32`) ' +
+      'and set APP_SECRET. To override for a deliberate local test, set ALLOW_INSECURE_SECRET=true.'
+    );
+  }
   console.warn(
     '[curio] WARNING: APP_SECRET is unset — using an insecure dev default. ' +
-    'Set APP_SECRET in production or stored provider keys are not safe.'
+    'Fine for local demo only; set APP_SECRET before handling real data.'
   );
 }
+
+config.assertSecretSafe = assertSecretSafe;
+config.INSECURE_DEFAULT_SECRET = INSECURE_DEFAULT_SECRET;
+
+assertSecretSafe();
 
 module.exports = config;

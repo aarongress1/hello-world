@@ -60,6 +60,22 @@
     .mins button.sel { border-color:var(--brand); background:var(--brand-soft); color:var(--brand-deep); }
     .winddown { background:#f1fbf7; border:2px solid var(--mint); border-radius:16px; padding:1rem 1.2rem; margin:.6rem 0; align-self:stretch; }
     .winddown h3 { margin:0 0 .3rem; }
+    /* Homeschool split-screen: lesson board (A/B) beside chat */
+    .kid-wrap.wide { max-width: 1100px; }
+    .stage { display:flex; flex-direction:column; flex:1; min-height:0; gap:.6rem; }
+    .lesson { display:none; background:#fff; border:2px solid var(--brand); border-radius:16px; padding:1rem 1.1rem; box-shadow:var(--shadow-sm); margin-bottom:.2rem; }
+    .lesson.on { display:block; }
+    .lesson h3 { margin:0 0 .35rem; font-size:1.05rem; }
+    .lesson .subj { font-size:.8rem; font-weight:800; color:var(--brand-deep); text-transform:uppercase; letter-spacing:.02em; }
+    .lesson .notes { margin:.55rem 0; font-size:.95rem; color:var(--ink-soft); }
+    .lesson .actions { display:flex; flex-wrap:wrap; gap:.45rem; margin-top:.7rem; }
+    .main-col { display:flex; flex-direction:column; flex:1; min-height:0; min-width:0; }
+    @media (min-width:900px) {
+      .stage.split { flex-direction:row; align-items:stretch; }
+      .stage.split .lesson { flex:0 0 340px; max-width:340px; display:none; }
+      .stage.split .lesson.on { display:flex; flex-direction:column; }
+      .stage.split .main-col { flex:1; }
+    }
     /* Friendly in-app prompt (replaces the browser's gray dialog) */
     .ask-overlay { position:fixed; inset:0; background:rgba(31,35,48,.55); display:flex; align-items:center; justify-content:center; padding:20px; z-index:60; }
     .ask-card { background:#fff; border-radius:22px; max-width:460px; width:100%; padding:24px; box-shadow:var(--shadow); text-align:center; }
@@ -72,7 +88,7 @@
   </style>
 </head>
 <body>
-  <div class="kid-wrap">
+  <div class="kid-wrap" id="kidWrap">
     <div class="kid-top">
       <div class="who"><span class="owl">🦉</span> <span id="hello">Curio</span></div>
       <div style="display:flex;gap:.6rem;align-items:center;">
@@ -85,12 +101,26 @@
       <div class="bar"><span id="focusFill"></span></div>
     </div>
     <div class="quests" id="quests"></div>
-    <div class="chat" id="chat"></div>
-    <form class="composer" id="composer" onsubmit="return send(event)">
-      <button class="btn mic" type="button" id="micBtn" onclick="toggleMic()" title="Hold a chat — tap and talk">🎤</button>
-      <input id="input" placeholder="Type or tap 🎤 to talk…" autocomplete="off" autofocus />
-      <button class="btn" type="submit" id="sendBtn">Send</button>
-    </form>
+    <div class="stage" id="stage">
+      <aside class="lesson" id="lessonBoard" aria-label="Today's lesson">
+        <div class="subj" id="lessonSubject">Skill</div>
+        <h3 id="lessonTitle">Today's objective</h3>
+        <p class="notes" id="lessonNotes"></p>
+        <p class="muted" style="font-size:.85rem;margin:0;">Curio coaches on this side. Practice on your curriculum site, then come back with one tricky problem.</p>
+        <div class="actions">
+          <button class="btn mint small" type="button" id="openPractice" onclick="openPractice()">Open practice →</button>
+          <button class="btn ghost small" type="button" onclick="practicedTurn()">I practiced ✓</button>
+        </div>
+      </aside>
+      <div class="main-col">
+        <div class="chat" id="chat"></div>
+        <form class="composer" id="composer" onsubmit="return send(event)">
+          <button class="btn mic" type="button" id="micBtn" onclick="toggleMic()" title="Hold a chat — tap and talk">🎤</button>
+          <input id="input" placeholder="Type or tap 🎤 to talk…" autocomplete="off" autofocus />
+          <button class="btn" type="submit" id="sendBtn">Send</button>
+        </form>
+      </div>
+    </div>
   </div>
 
   <script src="/js/common.js"></script>

@@ -1,7 +1,7 @@
 // Minimal service worker — enables "install to home screen" and offline shell.
 // Network-first for everything; falls back to cache for the app shell so a
 // flaky connection still opens the app. Chat itself needs the network.
-const CACHE = 'curio-shell-v1';
+const CACHE = 'curio-shell-v6';
 const SHELL = ['/', '/index.html', '/parent.html', '/kid.html', '/css/styles.css', '/js/common.js', '/js/parent.js', '/js/kid.js', '/icon.svg'];
 
 self.addEventListener('install', (e) => {

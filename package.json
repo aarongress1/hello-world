@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node --experimental-sqlite --no-warnings server/index.js",
     "dev": "node --experimental-sqlite --no-warnings --watch server/index.js",
-    "seed": "node --experimental-sqlite --no-warnings server/seed.js"
+    "test": "node --test"
   },
   "engines": {
     "node": ">=22.5.0"

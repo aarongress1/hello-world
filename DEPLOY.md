@@ -24,6 +24,12 @@ powers both.
    - `CURIO_AI_MODEL = claude-sonnet-5`
    Save → it redeploys. Now kids chat with the real model, no per-parent setup.
    *(Leave these unset to run in friendly demo mode.)*
+5. **Turn on the natural voice (recommended):** also add
+   - `CURIO_TTS_KEY = <an OpenAI API key>` ← from `platform.openai.com`; this one
+     key powers both Curio's warm spoken voice (`gpt-4o-mini-tts`) and mic
+     transcription (`gpt-4o-mini-transcribe`, transcribe-and-discard — audio is
+     never stored). Without it, Curio falls back to the robotic browser voice
+     and the mic only works where the browser's own speech API does.
 
 ## Option B — Any Docker host (Railway, Fly.io, Cloud Run, a VPS)
 
@@ -66,4 +72,9 @@ It launches full-screen with the Curio icon, like a native app.
 | `CURIO_AI_PROVIDER` | `anthropic` or `openai` (bundled mode) | unset |
 | `CURIO_AI_KEY` | Server-side API key for bundled mode | unset |
 | `CURIO_AI_MODEL` | Model id | provider default |
+| `CURIO_TTS_KEY` | OpenAI key for natural voice — TTS **and** mic transcription | unset (robotic fallback) |
+| `CURIO_TTS_VOICE` | Voice: nova, fable, shimmer, alloy, echo, onyx | `nova` |
+| `CURIO_TTS_MODEL` | TTS model | `gpt-4o-mini-tts` |
+| `CURIO_TTS_STYLE` | Optional voice-style steering instructions | kid-friendly default |
+| `CURIO_STT_MODEL` | Mic transcription model | `gpt-4o-mini-transcribe` |
 | `PORT` | Port to listen on | `3000` |

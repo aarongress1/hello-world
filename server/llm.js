@@ -79,14 +79,38 @@ async function openaiComplete({ apiKey, model, system, messages, maxTokens }) {
 
 // ---- Natural text-to-speech (OpenAI voices) --------------------------------
 
-async function tts({ apiKey, model, voice, text }) {
+async function tts({ apiKey, model, voice, text, instructions }) {
+  const m = model || 'gpt-4o-mini-tts';
+  const body = { model: m, voice: voice || 'nova', input: String(text).slice(0, 4000) };
+  // gpt-4o TTS models accept style-steering instructions (tts-1 does not).
+  if (instructions && m.startsWith('gpt-4o')) body.instructions = instructions;
   const res = await fetch('https://api.openai.com/v1/audio/speech', {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model: model || 'tts-1', voice: voice || 'nova', input: String(text).slice(0, 4000) }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw providerError('OpenAI TTS', res.status, await safeText(res));
   return Buffer.from(await res.arrayBuffer());
+}
+
+// ---- Speech-to-text (OpenAI transcription) ----------------------------------
+
+// Transcribe-and-discard: the audio buffer goes straight to the provider and is
+// never written to disk or the database (CSO data-handling requirement).
+async function stt({ apiKey, model, audio, mime }) {
+  const type = mime || 'audio/webm';
+  const ext = /mp4/.test(type) ? 'mp4' : /ogg/.test(type) ? 'ogg' : /wav/.test(type) ? 'wav' : /mpeg|mp3/.test(type) ? 'mp3' : 'webm';
+  const form = new FormData();
+  form.append('file', new Blob([audio], { type }), `audio.${ext}`);
+  form.append('model', model || 'gpt-4o-mini-transcribe');
+  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${apiKey}` },
+    body: form,
+  });
+  if (!res.ok) throw providerError('OpenAI STT', res.status, await safeText(res));
+  const data = await res.json();
+  return String(data.text || '').trim();
 }
 
 // ---- Provider-side moderation (OpenAI only) --------------------------------
@@ -192,6 +216,18 @@ const CURRICULUM_PRESETS = {
       ['Reflect', 'Explain what you made and what you learned to someone'],
     ],
   },
+  // Skill-name style list mirroring how parents copy from IXL / similar platforms.
+  // Not an IXL partnership — paste real skill names from your account anytime.
+  'ixl-style-sampler': {
+    title: 'IXL-style skill sampler (paste your real skills too)',
+    objectives: [
+      ['Math', 'Add and subtract within 20'],
+      ['Math', 'Multiply by 2, 5, and 10'],
+      ['Math', 'Understand place value to hundreds'],
+      ['Language arts', 'Identify the main idea of a short paragraph'],
+      ['Science', 'Describe cause and effect in a simple system'],
+    ],
+  },
 };
 
-module.exports = { complete, moderate, tts, demoReply, defaultSecret, modelForTier, modelForBand, KNOWN_MODELS, CURRICULUM_PRESETS, demoMode };
+module.exports = { complete, moderate, tts, stt, demoReply, defaultSecret, modelForTier, modelForBand, KNOWN_MODELS, CURRICULUM_PRESETS, demoMode };

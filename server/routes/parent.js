@@ -175,7 +175,12 @@ module.exports = function registerParent(app) {
     } else if (providedRows) {
       rows = providedRows
         .filter((r) => r && r.title)
-        .map((r) => ({ subject: String(r.subject || safety.guessSubject(r.title)).slice(0, 40), title: String(r.title).slice(0, 200) }));
+        .map((r) => ({
+          subject: String(r.subject || safety.guessSubject(r.title)).slice(0, 40),
+          title: String(r.title).slice(0, 200),
+          resource_url: r.resource_url ? String(r.resource_url).slice(0, 500) : null,
+          notes: r.notes ? String(r.notes).slice(0, 500) : '',
+        }));
       source = 'import';
     } else if (text.trim()) {
       rows = parseCurriculum(text);
@@ -184,7 +189,14 @@ module.exports = function registerParent(app) {
     if (!rows.length) return res.json({ error: 'Nothing to import — paste some objectives or choose a preset.' }, 400);
 
     const plan = store.createPlan(kidId, { title: String(planTitle).slice(0, 120), source });
-    rows.forEach((r, i) => store.addObjective(kidId, { plan_id: plan.id, subject: r.subject, title: r.title, sort: i }));
+    rows.forEach((r, i) => store.addObjective(kidId, {
+      plan_id: plan.id,
+      subject: r.subject,
+      title: r.title,
+      sort: i,
+      resource_url: r.resource_url || null,
+      notes: r.notes || '',
+    }));
     res.json({ ok: true, plan, objectives: store.listObjectives(kidId), imported: rows.length });
   }));
 
@@ -193,8 +205,26 @@ module.exports = function registerParent(app) {
     if (!store.kidBelongsToParent(kidId, req.parent.id)) return res.json({ error: 'Not found.' }, 404);
     const title = String(req.body?.title || '').slice(0, 200).trim();
     if (!title) return res.json({ error: 'Objective needs a title.' }, 400);
-    const obj = store.addObjective(kidId, { subject: req.body?.subject || safety.guessSubject(title), title });
+    const obj = store.addObjective(kidId, {
+      subject: req.body?.subject || safety.guessSubject(title),
+      title,
+      resource_url: req.body?.resource_url || null,
+      notes: req.body?.notes || '',
+    });
     res.json({ ok: true, objective: obj });
+  }));
+
+  app.post('/api/objectives/:id', requireParent(async (req, res) => {
+    const obj = store.getObjective(Number(req.params.id));
+    if (!obj || !store.kidBelongsToParent(obj.kid_id, req.parent.id)) return res.json({ error: 'Not found.' }, 404);
+    const updated = store.updateObjective(obj.id, {
+      title: req.body?.title,
+      subject: req.body?.subject,
+      resource_url: req.body?.resource_url,
+      notes: req.body?.notes,
+      sort: req.body?.sort,
+    });
+    res.json({ ok: true, objective: updated });
   }));
 
   app.post('/api/objectives/:id/status', requireParent(async (req, res) => {

@@ -4,7 +4,7 @@ const store = require('../store');
 const { requireParent } = require('../session');
 const safety = require('../safety');
 const llm = require('../llm');
-const { demoMode, tts: ttsCfg } = require('../config');
+const { demoMode, tts: ttsCfg, stt: sttCfg } = require('../config');
 
 // Categories that are hard-blocked outright (no model call). Self-harm and
 // distress are handled with a *caring* response path instead of a cold block.
@@ -29,7 +29,17 @@ module.exports = function registerChat(app) {
       quests: store.listQuests(kidId),
       objectives: store.listObjectives(kidId),
       nextObjective: store.nextObjective(kidId),
-      activeFocus: activeFocusFor(req.session),
+      activeFocus: (() => {
+        const f = activeFocusFor(req.session);
+        if (!f) return null;
+        const withTime = withElapsed(f);
+        if (!f.objective_id) return withTime;
+        const obj = store.getObjective(f.objective_id);
+        return obj ? { ...withTime, objective: {
+          id: obj.id, title: obj.title, subject: obj.subject,
+          resource_url: obj.resource_url || null, notes: obj.notes || '',
+        } } : withTime;
+      })(),
       messages: store.listMessages(kidId, null, 60),
       providerConnected: !!store.getProviderMeta(req.parent.id) || !!llm.defaultSecret() || demoMode,
     });
@@ -42,16 +52,28 @@ module.exports = function registerChat(app) {
     const kid = store.getKid(kidId);
     let objectiveId = req.body?.objectiveId ? Number(req.body.objectiveId) : null;
     let goal = String(req.body?.goal || '').slice(0, 200).trim();
+    let kind = req.body?.kind === 'work' ? 'work' : 'explore';
     if (objectiveId) {
       const obj = store.getObjective(objectiveId);
       if (!obj || obj.kid_id !== kidId) objectiveId = null;
       else if (!goal) goal = obj.title;
     }
+    // Objective presence wins — planned skill work is always 'work'.
+    if (objectiveId) kind = 'work';
     if (!goal) goal = 'Explore and learn something new';
     const target = Math.min(90, Math.max(5, Number(req.body?.targetMinutes) || kid.session_minutes || 30));
-    const focus = store.startFocus(kidId, { objective_id: objectiveId, goal, target_minutes: target });
+    const focus = store.startFocus(kidId, { objective_id: objectiveId, goal, target_minutes: target, kind });
     store.setSessionFocus(req.sid, focus.id);
-    res.json({ ok: true, focus: withElapsed(focus) });
+    const withTime = withElapsed(focus);
+    let objective = null;
+    if (objectiveId) {
+      const obj = store.getObjective(objectiveId);
+      if (obj) objective = {
+        id: obj.id, title: obj.title, subject: obj.subject,
+        resource_url: obj.resource_url || null, notes: obj.notes || '',
+      };
+    }
+    res.json({ ok: true, focus: { ...withTime, objective, kind: focus.kind || kind } });
   }));
 
   app.post('/api/focus/end', requireParent(async (req, res) => {
@@ -74,11 +96,34 @@ module.exports = function registerChat(app) {
     if (!key) { const d = llm.defaultSecret(); if (d?.provider === 'openai') key = d.apiKey; }
     if (!key) return res.json({ error: 'no-tts' }, 402);
     try {
-      const audio = await llm.tts({ apiKey: key, model: ttsCfg.model, voice: ttsCfg.voice, text });
+      const audio = await llm.tts({ apiKey: key, model: ttsCfg.model, voice: ttsCfg.voice, instructions: ttsCfg.instructions, text });
       res.writeHead(200, { 'content-type': 'audio/mpeg', 'cache-control': 'no-store' });
       return res.end(audio);
     } catch {
       return res.json({ error: 'tts-failed' }, 200); // let the client fall back to browser voice
+    }
+  }));
+
+  // Speech-to-text for browsers/WebViews without the Web Speech API (notably the
+  // Android wrapper). The kid's audio arrives as base64, is transcribed via the
+  // provider, and immediately discarded — never written to disk or the database
+  // (CSO data-handling requirement). Returns 402 if no OpenAI key is available.
+  app.post('/api/stt', requireParent(async (req, res) => {
+    const b64 = String(req.body?.audio || '');
+    if (!b64) return res.json({ error: 'No audio.' }, 400);
+    if (b64.length > 900000) return res.json({ error: 'Audio too long.' }, 413); // ~40s of opus
+    // Resolve an OpenAI key the same way as TTS: env override → parent BYO → bundled.
+    let key = ttsCfg.key;
+    if (!key) { const p = store.getProviderSecret(req.parent.id); if (p?.provider === 'openai') key = p.apiKey; }
+    if (!key) { const d = llm.defaultSecret(); if (d?.provider === 'openai') key = d.apiKey; }
+    if (!key) return res.json({ error: 'no-stt' }, 402);
+    const audio = Buffer.from(b64, 'base64');
+    if (!audio.length) return res.json({ error: 'No audio.' }, 400);
+    try {
+      const text = await llm.stt({ apiKey: key, model: sttCfg.model, audio, mime: String(req.body?.mime || 'audio/webm') });
+      return res.json({ ok: true, text: text.slice(0, 2000) });
+    } catch {
+      return res.json({ error: 'stt-failed' }, 200); // client shows a friendly retry message
     }
   }));
 
@@ -181,14 +226,30 @@ module.exports = function registerChat(app) {
         }
         reply = llm.demoReply(kid, text, focus);
       } else {
-        const objTitle = focusRow && focusRow.objective_id ? (store.getObjective(focusRow.objective_id)?.title) : null;
-        const focusForPrompt = focus ? { goal: focus.goal, targetMinutes: focus.target_minutes, elapsedMinutes: focus.elapsedMinutes, objectiveTitle: objTitle } : null;
+        const obj = focusRow && focusRow.objective_id ? store.getObjective(focusRow.objective_id) : null;
+        const focusForPrompt = focus ? {
+          goal: focus.goal,
+          targetMinutes: focus.target_minutes,
+          elapsedMinutes: focus.elapsedMinutes,
+          objectiveTitle: obj?.title || null,
+          objectiveSubject: obj?.subject || null,
+          objectiveNotes: obj?.notes || null,
+          kind: focus.kind || focusRow.kind || 'explore',
+          // bump already ran — include the just-counted exchange so BUILD CHECK fires on schedule
+          exchanges: (focusRow.exchanges || 0) + 1,
+        } : null;
         const system = safety.buildSystemPrompt(kid, { quest, extraNote: careNote, focus: focusForPrompt });
         const history = store.listMessages(kidId, questId, 20)
           .map((m) => ({ role: m.role === 'kid' ? 'user' : 'assistant', content: m.content }));
         // Ensure the just-sent message is the last user turn.
         if (!history.length || history[history.length - 1].content !== text) history.push({ role: 'user', content: text });
-        reply = await llm.complete({ ...secret, system, messages: history, maxTokens: band === 'early' ? 300 : 700 });
+        const tightBudget = !!(focusForPrompt && (focusForPrompt.objectiveTitle || focusForPrompt.kind === 'work'));
+        reply = await llm.complete({
+          ...secret,
+          system,
+          messages: history,
+          maxTokens: band === 'early' ? 250 : (tightBudget ? 350 : 700),
+        });
       }
     } catch (err) {
       const msg = err.isProvider
@@ -198,12 +259,20 @@ module.exports = function registerChat(app) {
       return res.json({ reply: msg, error: true }, 200);
     }
 
+    // Strip residual markdown before screening/showing (kids see plain text).
+    reply = safety.stripMarkdown(reply);
+
     // ---- 4. Screen the model's output before the child sees it ----
+    // screen() returns safe:false ONLY for a severity:'block' category
+    // (self-harm, violence-weapons, sexual, substances, hate). Withhold on ANY
+    // of them — do NOT re-filter through HARD_BLOCK, which drops 'self-harm'.
     const outScan = safety.screen(reply);
     let flaggedOut = false;
-    if (!outScan.safe && HARD_BLOCK.has(outScan.category)) {
+    if (!outScan.safe) {
       store.addSafetyEvent(kidId, { severity: 'block', category: `output:${outScan.category}`, snippet: reply });
-      reply = safety.safeRedirect(kid.name, band);
+      // Self-harm output gets a WARM, resource-bearing redirect (a caring reply
+      // that trips the screen must not be swapped for a cold deflection).
+      reply = safety.outputRedirect(outScan, kid.name, band);
       flaggedOut = true;
     }
 

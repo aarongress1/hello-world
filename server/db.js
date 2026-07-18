@@ -135,5 +135,11 @@ ensureColumn('kids', 'homeschool', 'homeschool INTEGER NOT NULL DEFAULT 0');
 ensureColumn('kids', 'session_minutes', 'session_minutes INTEGER NOT NULL DEFAULT 30');
 ensureColumn('kids', 'model_tier', "model_tier TEXT NOT NULL DEFAULT 'auto'"); // auto|fast|balanced|capable
 ensureColumn('sessions', 'focus_session_id', 'focus_session_id INTEGER');
+// Parent exit PIN: blocks the kid UI "Parent area" button until verified.
+ensureColumn('parents', 'exit_pin_hash', 'exit_pin_hash TEXT');
+// Homeschool split-screen: optional practice link (e.g. IXL skill) + parent notes.
+ensureColumn('objectives', 'resource_url', 'resource_url TEXT');
+ensureColumn('objectives', 'notes', "notes TEXT NOT NULL DEFAULT ''");
+ensureColumn('focus_sessions', 'kind', "kind TEXT NOT NULL DEFAULT 'explore'");
 
 module.exports = db;

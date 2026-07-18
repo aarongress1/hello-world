@@ -39,10 +39,11 @@ to create your parent account and set up your kids.
 > **Private networks** — click **Allow**. (If devices can't connect, that's
 > usually why.)
 
-## 4. Optional: a free HTTPS link (works anywhere, still no hosting cost)
-Plain `http://` over WiFi works, but a secure `https://` link enables full app
-install and lets you reach it off your home network. Use **Cloudflare Tunnel**
-(free):
+## 4. The HTTPS link — required for voice (still free)
+Plain `http://` over WiFi works for typing, but **the microphone is blocked by
+every browser on a plain http address**, and the https link also enables full
+app install + access off your home network. If your kids will *talk* to Curio,
+use **Cloudflare Tunnel** (free):
 1. Install `cloudflared` ([guide](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)).
 2. With the server running, in another terminal:
    ```
@@ -51,6 +52,21 @@ install and lets you reach it off your home network. Use **Cloudflare Tunnel**
 3. It prints a `https://something.trycloudflare.com` URL — open that on any
    device and **Add to Home Screen**. (This quick URL changes each run; a free
    Cloudflare account + a domain gives you a permanent one.)
+
+> **Android APK users:** set `app_url` in `android/.../res/values/strings.xml`
+> to this https URL — the in-app mic only works from a secure (https) page.
+
+## 4½. Turn on Curio's natural voice (speaking *and* listening)
+Out of the box Curio uses the robotic built-in browser voice. For the warm,
+natural voice + a mic that works on tablets and the Android app:
+1. Get an OpenAI API key at `platform.openai.com` (this is Curio's *voice*, it
+   works fine alongside an Anthropic key for the *brain*).
+2. In `.env`, set `CURIO_TTS_KEY=sk-...` and restart the server.
+3. Open Curio via the **https link** (step 4) on the kids' devices.
+
+That one key powers both the spoken replies (`gpt-4o-mini-tts`) and mic
+transcription (`gpt-4o-mini-transcribe`). The kid's audio is transcribed and
+immediately discarded — it is never stored.
 
 ## 5. Day-to-day
 - **Your data** lives in `data/curio.db` on your PC. Back it up by copying that

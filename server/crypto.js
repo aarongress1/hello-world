@@ -47,6 +47,26 @@ function decrypt(blob) {
   }
 }
 
+// ---- Field encryption with legacy-plaintext fallback ----------------------
+// For stored PII fields (child transcripts, safety snippets, digests) that hold
+// a MIX of newly-encrypted and legacy-plaintext rows during the migration.
+// Ciphertext has the shape `<24hex-iv>:<32hex-tag>:<hex>`; anything that doesn't
+// match is treated as legacy plaintext and returned unchanged.
+const FIELD_RE = /^[0-9a-f]{24}:[0-9a-f]{32}:[0-9a-f]*$/i;
+
+function encryptField(text) {
+  if (text === null || text === undefined) return text;
+  return encrypt(text);
+}
+
+function decryptField(blob) {
+  if (blob === null || blob === undefined) return blob;
+  const s = String(blob);
+  if (!FIELD_RE.test(s)) return blob;    // legacy plaintext — return unchanged
+  const plain = decrypt(s);
+  return plain === null ? blob : plain;  // decrypt failed (e.g. rotated key) → raw
+}
+
 // ---- Cookie signing --------------------------------------------------------
 
 function sign(value) {
@@ -70,4 +90,4 @@ function randomToken() {
   return crypto.randomBytes(24).toString('hex');
 }
 
-module.exports = { hashPassword, verifyPassword, encrypt, decrypt, sign, unsign, randomToken };
+module.exports = { hashPassword, verifyPassword, encrypt, decrypt, encryptField, decryptField, sign, unsign, randomToken };
