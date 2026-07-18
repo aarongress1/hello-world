@@ -3,3 +3,9 @@ node_modules/
 data/
 .env
 .DS_Store
+
+# Ephemeral local-pilot delivery artifacts (tied to a temporary tunnel URL / build)
+public/CurioKids.apk
+public/qr.png
+public/get.html
+android/app/build/

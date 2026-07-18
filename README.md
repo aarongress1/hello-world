@@ -83,8 +83,8 @@ Turn Curio into a self-directed tutor with a backbone of objectives:
 
 | Plan | Price | For |
 |------|-------|-----|
-| **Explorer** | $0 | 1 child, core safety, weekly debrief |
-| **Curio Plus** | $12/mo | up to 3 children, all oversight modes, AI debriefs, quest library |
+| **Explorer** | $7.99/mo | 1 child, core safety, weekly debrief |
+| **Curio Plus** | $12.99/mo | up to 3 children, all oversight modes, AI debriefs, homeschool lesson plans |
 | **Curio Max** | $29/mo | up to 6 children, real-time per-message approval, multi-provider, analytics |
 
 ## Run it

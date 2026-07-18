@@ -85,6 +85,18 @@ module.exports = function registerChat(app) {
     res.json({ ok: true });
   }));
 
+  // Randomized, age-appropriate topic ideas for the kid's "Suggest a topic"
+  // starter. Curated + shuffled so it never repeats the same canned line (the
+  // old demo reply did), and it leans into the child's own interests when set.
+  // Works with or without a model — no key required.
+  app.get('/api/suggest-topics', requireParent(async (req, res) => {
+    const kidId = req.session.kid_id;
+    if (!kidId) return res.json({ error: 'No child selected.' }, 400);
+    const kid = store.getKid(kidId);
+    const band = safety.gradeBand(kid.grade).band;
+    res.json({ ok: true, topics: suggestTopics(band, kid.interests, 6) });
+  }));
+
   // Natural voice: synthesize Curio's reply with an OpenAI voice. Returns MP3
   // audio, or 402 if no OpenAI key is available (client then uses browser voice).
   app.post('/api/tts', requireParent(async (req, res) => {
@@ -341,6 +353,68 @@ function activeFocusFor(session) {
 // Attach elapsed minutes computed from the wall clock.
 function withElapsed(focus) {
   return { ...focus, elapsedMinutes: Math.floor((Date.now() - focus.started_at_ms) / 60000) };
+}
+
+// ---- Topic suggestions (for the kid "Suggest a topic" starter) -------------
+// Age-banded pools of short, kid-facing project prompts. Kept concrete and
+// build-oriented so a pick becomes a real Focus Session goal.
+const TOPIC_POOLS = {
+  early: [
+    'Why is the sky blue?', 'Build a tiny paper boat that floats',
+    'How do bees make honey?', 'Draw and name your own animal',
+    'Count how many steps across your room', 'Why do we have to sleep?',
+    'Make up a silly song about your day', 'What makes a rainbow?',
+    'Build the tallest tower you can', 'How do plants drink water?',
+    'Invent a secret handshake', 'Why do cats purr?',
+  ],
+  middle: [
+    'Design the rules for your own board game', 'How does a rocket get to space?',
+    'Start a tiny lemonade-stand business plan', 'Build a bridge out of paper that holds a book',
+    'Why do volcanoes erupt?', 'Write the first page of an adventure story',
+    'How do magnets actually work?', 'Invent a gadget that solves a chore you hate',
+    'What lived during the dinosaurs?', 'Make a code with symbols only you know',
+    'How does money work?', 'Grow a plant from a seed and track it',
+  ],
+  later: [
+    'Prototype an app idea that helps your school', 'How does the internet actually work?',
+    'Plan a 2-week passion project you could really build', 'Why do stock prices go up and down?',
+    'Design a video game level from scratch', 'How do vaccines train your body?',
+    'Start a small business around something you love', 'Explain how AI models learn',
+    'Build a simple electric circuit', 'Write and record a short song',
+    'How do black holes work?', 'Design a solution to a problem in your town',
+  ],
+};
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Return n shuffled ideas: a couple seeded from the child's own interests
+// (so it feels personal), the rest from the age-appropriate pool.
+function suggestTopics(band, interests, n = 6) {
+  const pool = TOPIC_POOLS[band] || TOPIC_POOLS.middle;
+  const picks = [];
+  const seen = new Set();
+  const add = (t) => { const k = t.toLowerCase(); if (t && !seen.has(k)) { seen.add(k); picks.push(t); } };
+
+  const list = String(interests || '')
+    .split(',').map((s) => s.trim()).filter(Boolean).slice(0, 4);
+  const templates = [
+    (x) => `Go deep on ${x} — from first principles`,
+    (x) => `Build something about ${x}`,
+    (x) => `Invent a project around ${x}`,
+    (x) => `Why is ${x} the way it is?`,
+  ];
+  for (const x of shuffle(list).slice(0, 2)) {
+    add(templates[Math.floor(Math.random() * templates.length)](x));
+  }
+  for (const t of shuffle(pool)) { if (picks.length >= n) break; add(t); }
+  return shuffle(picks).slice(0, n);
 }
 
 // Fallback debrief built from topic tags when no model is available.

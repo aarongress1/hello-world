@@ -397,6 +397,12 @@ async function loadProvider() {
   } else {
     s.innerHTML = `<div class="card" style="background:#fff6e9;border:0;margin-bottom:1rem;">⚠️ No account connected — running in demo mode.</div>`;
   }
+  const v = el('voiceStatus');
+  if (v) {
+    v.innerHTML = me.voiceReady
+      ? '✅ <strong>Read-aloud voice is on.</strong> Curio speaks its replies in a natural voice.'
+      : '⚠️ <strong>Read-aloud voice is off.</strong> Connect an OpenAI key to turn on the natural spoken voice (and the in-app mic).';
+  }
 }
 async function saveProvider(e) {
   e.preventDefault();

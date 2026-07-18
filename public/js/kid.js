@@ -232,8 +232,10 @@ function renderStart() {
         <label style="font-weight:800;margin-top:.8rem;display:block;">How long today?</label>
         <div class="mins">${mins}</div>
         ${planBtn}
+        <button class="btn ghost" style="width:100%;margin-top:.5rem;font-size:.9rem;" onclick="suggestTopic()">💡 Suggest a topic →</button>
         <button class="btn ghost" style="width:100%;margin-top:.5rem;font-size:.9rem;" onclick="startFree()">Just exploring today →</button>
       </div>
+      <div id="topicPicker"></div>
       <p class="muted" style="font-size:.85rem;">🌿 We'll find a good stopping point together when time's up.</p>
     </div>`;
 }
@@ -306,6 +308,32 @@ function toast(msg) {
 async function startFree() {
   const goal = await askKid('What do you want to learn or build today?', 'e.g. make slime, build a game, write a song');
   if (!goal) return;
+  await start(null, goal, 'explore');
+}
+
+// "Suggest a topic" — fetch fresh, randomized, age-appropriate ideas and show
+// them as pickable chips. "🎲 Shuffle" pulls a new set (never the same canned
+// line twice), and picking one starts a focus session on it.
+async function suggestTopic() {
+  const box = el('topicPicker');
+  if (!box) return;
+  box.innerHTML = '<p class="muted" style="text-align:center;margin:.8rem 0;">🦉 Thinking of ideas…</p>';
+  let topics = [];
+  try { topics = (await api('/api/suggest-topics')).topics || []; }
+  catch (e) { box.innerHTML = '<p class="muted" style="text-align:center;">Hmm, try again in a sec. 🌱</p>'; return; }
+  if (!topics.length) { box.innerHTML = ''; startFree(); return; }
+  const chips = topics.map((t) =>
+    `<button type="button" class="qchip" style="white-space:normal;text-align:left;" onclick="pickSuggested(${JSON.stringify(t)})">${esc(t)}</button>`
+  ).join('');
+  box.innerHTML = `
+    <div class="card" style="max-width:460px;margin:.4rem auto 0;">
+      <div style="font-weight:800;margin-bottom:.5rem;">Pick one that sounds fun:</div>
+      <div class="quests" style="flex-wrap:wrap;">${chips}</div>
+      <button class="btn ghost" style="width:100%;margin-top:.7rem;font-size:.9rem;" onclick="suggestTopic()">🎲 Show me different ideas</button>
+    </div>`;
+}
+async function pickSuggested(goal) {
+  const box = el('topicPicker'); if (box) box.innerHTML = '';
   await start(null, goal, 'explore');
 }
 async function start(objectiveId, goal, kind) {

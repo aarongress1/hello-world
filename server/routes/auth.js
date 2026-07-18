@@ -2,6 +2,7 @@
 
 const store = require('../store');
 const llm = require('../llm');
+const { tts: ttsCfg } = require('../config');
 const { startSession, endSession, currentSession, requireParent } = require('../session');
 
 function validEmail(e) { return typeof e === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e); }
@@ -37,12 +38,20 @@ module.exports = function registerAuth(app) {
     const ctx = currentSession(req);
     if (!ctx) return res.json({ parent: null });
     const provider = store.getProviderMeta(ctx.parent.id);
+    // Natural read-aloud voice needs an OpenAI key: env CURIO_TTS_KEY, a parent's
+    // BYO OpenAI key, or a bundled OpenAI key. Without it the kid UI falls back to
+    // the browser voice (which is silent in the Android WebView).
+    const bundledSecret = llm.defaultSecret();
+    const voiceReady = !!ttsCfg.key
+      || (provider && provider.provider === 'openai')
+      || (bundledSecret && bundledSecret.provider === 'openai');
     res.json({
       parent: publicParent(ctx.parent),
       provider,
       // "Real AI live?" = this parent connected a key, OR a server bundled key exists.
-      aiConnected: !!provider || !!llm.defaultSecret(),
-      bundled: !provider && !!llm.defaultSecret(),
+      aiConnected: !!provider || !!bundledSecret,
+      bundled: !provider && !!bundledSecret,
+      voiceReady: !!voiceReady,
       selectedKidId: ctx.session.kid_id || null,
       hasExitPin: store.hasExitPin(ctx.parent.id),
     });

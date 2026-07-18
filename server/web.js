@@ -18,6 +18,7 @@ const MIME = {
   '.png': 'image/png',
   '.ico': 'image/x-icon',
   '.webmanifest': 'application/manifest+json',
+  '.apk': 'application/vnd.android.package-archive',
 };
 
 function createApp({ publicDir }) {
@@ -135,9 +136,14 @@ function sendText(res, str, status = 200) {
 
 function serveStatic(publicDir, pathname, res) {
   let rel = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
-  const filePath = path.normalize(path.join(publicDir, rel));
+  let filePath = path.normalize(path.join(publicDir, rel));
   if (!filePath.startsWith(publicDir)) return false; // path traversal guard
-  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return false;
+  const isFile = (p) => fs.existsSync(p) && fs.statSync(p).isFile();
+  // Clean-URL fallback: /welcome → /welcome.html when there's no extension.
+  if (!isFile(filePath) && !path.extname(filePath) && isFile(filePath + '.html')) {
+    filePath += '.html';
+  }
+  if (!isFile(filePath)) return false;
   res.writeHead(200, { 'content-type': MIME[path.extname(filePath)] || 'application/octet-stream' });
   fs.createReadStream(filePath).pipe(res);
   return true;

@@ -44,7 +44,7 @@
       <aside class="side">
         <button class="active" data-panel="kids" onclick="showPanel('kids')">👦 Children</button>
         <button data-panel="approvals" onclick="showPanel('approvals')">✅ Approvals <span id="pendCount"></span></button>
-        <button data-panel="plans" onclick="showPanel('plans')">🏠 Learning plans</button>
+        <button data-panel="plans" onclick="showPanel('plans')">🏠 Homeschool plans</button>
         <button data-panel="activity" onclick="showPanel('activity')">📝 Activity</button>
         <button data-panel="safety" onclick="showPanel('safety')">🛡️ Safety</button>
         <button data-panel="provider" onclick="showPanel('provider')">🔌 AI account</button>
@@ -81,37 +81,42 @@
                 <option value="weekly">Weekly debrief</option>
                 <option value="off">Open exploration (transcripts only)</option>
               </select>
-              <label for="kPriority">⭐ Prioritize these topics <span class="muted" style="font-weight:400;">(Curio leans in when natural)</span></label>
-              <input id="kPriority" placeholder="reading, fractions, kindness" />
-              <label for="kBlocked">🚫 Off-limit topics <span class="muted" style="font-weight:400;">(always blocked, parent-only)</span></label>
-              <input id="kBlocked" placeholder="video games, scary movies, YouTubers" />
-              <div class="row">
-                <div style="flex:1;min-width:180px;">
-                  <label for="kMinutes">🌿 Focus session length</label>
-                  <select id="kMinutes">
-                    <option value="15">15 minutes</option>
-                    <option value="20">20 minutes</option>
-                    <option value="30" selected>30 minutes</option>
-                    <option value="45">45 minutes</option>
-                    <option value="60">60 minutes</option>
+              <details class="advanced" style="margin-top:.9rem;">
+                <summary style="cursor:pointer;font-weight:800;color:var(--brand-deep);">⚙️ Advanced options <span class="muted" style="font-weight:400;">— topics, session length, model</span></summary>
+                <div style="margin-top:.6rem;">
+                  <label for="kPriority">⭐ Prioritize these topics <span class="muted" style="font-weight:400;">(Curio leans in when natural)</span></label>
+                  <input id="kPriority" placeholder="reading, fractions, kindness" />
+                  <label for="kBlocked">🚫 Off-limit topics <span class="muted" style="font-weight:400;">(always blocked, parent-only)</span></label>
+                  <input id="kBlocked" placeholder="video games, scary movies, YouTubers" />
+                  <div class="row">
+                    <div style="flex:1;min-width:180px;">
+                      <label for="kMinutes">🌿 Focus session length</label>
+                      <select id="kMinutes">
+                        <option value="15">15 minutes</option>
+                        <option value="20">20 minutes</option>
+                        <option value="30" selected>30 minutes</option>
+                        <option value="45">45 minutes</option>
+                        <option value="60">60 minutes</option>
+                      </select>
+                    </div>
+                    <div style="flex:1;min-width:180px;">
+                      <label for="kHome">🏠 Homeschool mode</label>
+                      <select id="kHome">
+                        <option value="0">Off — free exploration</option>
+                        <option value="1">On — follow a learning plan</option>
+                      </select>
+                    </div>
+                  </div>
+                  <label for="kModel">🧠 AI model</label>
+                  <select id="kModel">
+                    <option value="auto">Auto — pick by age (recommended)</option>
+                    <option value="fast">Faster &amp; cheaper (Haiku)</option>
+                    <option value="balanced">Balanced (Sonnet)</option>
+                    <option value="capable">Most capable (Opus)</option>
                   </select>
                 </div>
-                <div style="flex:1;min-width:180px;">
-                  <label for="kHome">🏠 Homeschool mode</label>
-                  <select id="kHome">
-                    <option value="0">Off — free exploration</option>
-                    <option value="1">On — follow a learning plan</option>
-                  </select>
-                </div>
-              </div>
-              <label for="kModel">🧠 AI model</label>
-              <select id="kModel">
-                <option value="auto">Auto — pick by age (recommended)</option>
-                <option value="fast">Faster &amp; cheaper (Haiku)</option>
-                <option value="balanced">Balanced (Sonnet)</option>
-                <option value="capable">Most capable (Opus)</option>
-              </select>
-              <p class="muted" style="font-size:.82rem;margin-top:.5rem;">🌿 Curio optimizes for finishing a focused session and going offline to build — not for maximizing screen time.</p>
+              </details>
+              <p class="muted" style="font-size:.82rem;margin-top:.6rem;">🌿 Curio optimizes for finishing a focused session and going offline to build — not for maximizing screen time.</p>
               <div class="form-msg" id="kidMsg"></div>
               <div class="row" style="margin-top:.6rem;">
                 <button class="btn" type="submit">Save child</button>
@@ -180,6 +185,13 @@
             </form>
             <p class="muted" style="font-size:.82rem;margin-top:.8rem;">Until a key is connected, Curio runs in demo mode (friendly canned replies) so you can explore the flow.</p>
           </div>
+
+          <h3 style="margin-top:1.6rem;">🔊 Read-aloud voice</h3>
+          <p class="muted">Curio can read its replies aloud in a warm, natural voice — essential for younger kids who can't read the responses yet. The child can toggle it with the 🔊 button on their screen.</p>
+          <div class="card" style="margin-top:.6rem;max-width:520px;">
+            <div id="voiceStatus"></div>
+            <p class="muted" style="font-size:.82rem;margin:.6rem 0 0;">The natural voice runs on an <strong>OpenAI</strong> key (it powers both read-aloud and the tap-to-talk microphone). Connect an OpenAI account above, or set <code>CURIO_TTS_KEY</code> in <code>.env</code>. Without it, the app uses the device's built-in voice, which many tablets (and the Android app) don't support.</p>
+          </div>
         </section>
 
         <!-- SECURITY -->
@@ -208,8 +220,8 @@
           <h2>Your plan</h2>
           <p class="muted">Current plan: <strong id="curPlan">explorer</strong>. Pricing is for the platform only — model usage is billed by your provider.</p>
           <div class="price-grid" style="margin-top:1rem;">
-            <div class="card plan"><h3>Explorer</h3><p class="price">$0</p><ul><li>1 child</li><li>Core safety</li><li>Weekly debrief</li></ul><button class="btn ghost" onclick="choosePlan('explorer')">Choose</button></div>
-            <div class="card plan featured"><span class="badge">POPULAR</span><h3>Plus</h3><p class="price">$12<span>/mo</span></p><ul><li>3 children</li><li>All oversight modes</li><li>AI debriefs</li></ul><button class="btn" onclick="choosePlan('plus')">Choose</button></div>
+            <div class="card plan"><h3>Explorer</h3><p class="price">$7.99<span>/mo</span></p><ul><li>1 child</li><li>Core safety</li><li>Weekly debrief</li></ul><button class="btn ghost" onclick="choosePlan('explorer')">Choose</button></div>
+            <div class="card plan featured"><span class="badge">POPULAR</span><h3>Plus</h3><p class="price">$12.99<span>/mo</span></p><ul><li>3 children</li><li>All oversight modes</li><li>AI debriefs</li></ul><button class="btn" onclick="choosePlan('plus')">Choose</button></div>
             <div class="card plan"><h3>Max</h3><p class="price">$29<span>/mo</span></p><ul><li>6 children</li><li>Real-time gates</li><li>Multi-provider</li></ul><button class="btn ghost" onclick="choosePlan('max')">Choose</button></div>
           </div>
         </section>
